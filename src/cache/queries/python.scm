@@ -1,0 +1,6 @@
+(function_definition name: (identifier) @function)
+(class_definition name: (identifier) @class)
+(decorated_definition (function_definition name: (identifier) @function))
+(decorated_definition (class_definition name: (identifier) @class))
+(import_statement name: (dotted_name) @import)
+(import_from_statement module_name: (dotted_name) @import)

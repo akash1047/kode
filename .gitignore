@@ -1,0 +1,8 @@
+/target
+/.claude
+.mcp.json
+.env
+*.env.local
+.DS_Store
+Thumbs.db
+*.log

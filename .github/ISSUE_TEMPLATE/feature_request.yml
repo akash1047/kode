@@ -1,0 +1,30 @@
+name: Feature Request
+description: Suggest a new feature or improvement
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Before filing, check [DESIGN.md](../../DESIGN.md) — it lists explicit non-goals.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What are you trying to do that kode doesn't support today?
+    validations:
+      required: true
+
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed solution
+      description: Describe the feature you'd like to see.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Other approaches you've tried or considered.
