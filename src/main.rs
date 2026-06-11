@@ -13,6 +13,7 @@ async fn main() {
         }
         Some(cli::Command::Cache { op }) => commands::cache::run(op),
         Some(cli::Command::Mcp { op }) => match op {
+            cli::McpOp::Init { path, preset } => commands::mcp::init(&path, preset),
             cli::McpOp::Serve { path, transport, port } => {
                 commands::mcp::serve(&path, transport, port).await
             }

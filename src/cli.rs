@@ -93,8 +93,33 @@ pub enum ConfigOp {
     },
 }
 
+/// Editor/tool preset for `mcp init`.
+#[derive(clap::ValueEnum, Debug, Clone, Copy, Default)]
+pub enum McpPreset {
+    /// Claude Code — writes .mcp.json
+    #[default]
+    Claude,
+    /// VS Code — writes .vscode/mcp.json
+    Vscode,
+    /// Cursor — writes .cursor/mcp.json
+    Cursor,
+    /// Zed — writes .zed/settings.json
+    Zed,
+}
+
 #[derive(Subcommand, Debug)]
 pub enum McpOp {
+    /// Write an MCP config file for the chosen editor preset (skips if file already exists).
+    Init {
+        /// Project directory to write the config into.
+        #[arg(default_value = ".")]
+        path: PathBuf,
+
+        /// Editor preset: claude (default), vscode, cursor, zed.
+        #[arg(long, default_value = "claude")]
+        preset: McpPreset,
+    },
+
     /// Run an MCP server exposing an `ask` tool backed by the kode agent.
     Serve {
         /// Project directory to expose.

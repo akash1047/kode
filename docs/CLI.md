@@ -61,9 +61,34 @@ kode cache inspect [PATH]   # human-friendly breakdown: files by language, symbo
 Expose the kode index to other agents over the Model Context Protocol.
 
 ```sh
+kode mcp init [PATH]                                # write editor MCP config (skips if exists)
 kode mcp serve [PATH]                               # stdio transport (default)
 kode mcp serve [PATH] --transport http --port 8765  # HTTP transport
 ```
+
+#### mcp init
+
+Writes an MCP config file into the project directory for the chosen editor preset. Exits with an error if the file already exists.
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--preset` | `claude` | Editor preset: `claude`, `vscode`, `cursor`, `zed` |
+
+| Preset | File written |
+|--------|-------------|
+| `claude` | `.mcp.json` |
+| `vscode` | `.vscode/mcp.json` |
+| `cursor` | `.cursor/mcp.json` |
+| `zed` | `.zed/settings.json` |
+
+```sh
+kode mcp init                        # writes .mcp.json for Claude Code
+kode mcp init --preset vscode        # writes .vscode/mcp.json
+kode mcp init --preset cursor        # writes .cursor/mcp.json
+kode mcp init --preset zed           # writes .zed/settings.json
+```
+
+#### mcp serve
 
 Flags:
 
@@ -84,6 +109,19 @@ Claude Desktop config (`claude_desktop_config.json`):
   }
 }
 ```
+
+---
+
+## Path restrictions
+
+kode refuses to scan certain paths and exits with an error:
+
+| Path | Reason |
+|------|--------|
+| `/` (filesystem root) | Would walk the entire system |
+| `~` (home directory) | Too broad; pass a specific project subdirectory |
+
+Subdirectories under home (e.g. `~/projects/myapp`) are allowed.
 
 ### config
 

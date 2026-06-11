@@ -24,17 +24,13 @@ Most LLM tools answer code questions from training data or semantic embeddings, 
 
 ## Installation
 
-```sh
-cargo install kode
-```
-
-Or build from source:
+build from source:
 
 ```sh
 git clone https://github.com/akash1047/kode
 cd kode
 cargo build --release
-# binary at target/release/kode
+cargo install --path .
 ```
 
 ## Quick start
