@@ -7,6 +7,8 @@
 
 Codebase evidence service for humans and AI agents — a local snapshot of any repo, plus a chat REPL where an LLM answers questions about your project using tools that read it for real (no training-data guessing).
 
+AaaS 🫏 — Agent as a Service, but for your codebase.
+
 ## Why kode?
 
 Most LLM tools answer code questions from training data or semantic embeddings, both of which go stale and hallucinate. kode takes a different approach: it caches a parsed, indexed view of your repo on disk and forces every answer to be backed by a live file read with a `path:line` citation. If the source doesn't say it, kode doesn't say it.
