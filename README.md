@@ -13,14 +13,30 @@ kode builds a deterministic understanding of your repository and answers questio
 
 ---
 
-## Repository Status
+## Current Status
 
-This repository is a **scaffold**. The workspace structure and crate boundaries reflect the documented architecture, but all crates currently contain placeholder implementations.
+The CLI foundation and public command interface are **implemented**. The full command hierarchy, global options, help generation, command dispatch, and placeholder handlers are in place. The CLI establishes the public contract for all kode operations.
 
-- The architecture has been finalized and documented.
-- The workspace compiles but contains no functional code.
-- Implementation has not yet begun.
-- Contributors should read `DESIGN.md` and the documentation index in `docs/README.md` before starting work.
+Repository processing **is not yet implemented**. The following capabilities remain under development:
+
+- Repository discovery and scanning
+- Language parsing (Tree-sitter)
+- Knowledge Graph construction
+- Incremental caching and storage
+- Query execution
+- Analysis engine
+- MCP server logic
+- LLM integration
+
+Running a kode command will:
+- Parse arguments and validate input
+- Generate help output when requested
+- Dispatch to the appropriate subcommand handler
+- Return a placeholder message confirming the command was received
+
+No repository processing, file parsing, knowledge graph construction, storage, or LLM integration has been implemented yet.
+
+Contributors should read `DESIGN.md` and the documentation index in `docs/README.md` before starting work.
 
 ---
 
@@ -84,7 +100,7 @@ kode config set api_key YOUR_KEY
 Scan the current repository:
 
 ```sh
-kode
+kode scan
 ```
 
 Start an interactive chat session:
@@ -103,6 +119,18 @@ Run the MCP server:
 
 ```sh
 kode mcp serve .
+```
+
+Check cache status:
+
+```sh
+kode cache status
+```
+
+Clear the repository cache:
+
+```sh
+kode cache clear
 ```
 
 ---
@@ -193,10 +221,34 @@ Future releases will extend the cache with richer repository relationships and a
 ## Commands
 
 ```sh
-kode
+kode scan
 ```
 
-Scan the current repository.
+Discover and index a repository.
+
+```sh
+kode status
+```
+
+Show repository indexing status.
+
+```sh
+kode files
+```
+
+Explore indexed repository files.
+
+```sh
+kode symbols
+```
+
+Explore extracted symbols.
+
+```sh
+kode query "<query>"
+```
+
+Query repository knowledge.
 
 ```sh
 kode chat
@@ -227,6 +279,18 @@ kode cache clear
 ```
 
 Remove the cache for the current repository.
+
+```sh
+kode config init
+```
+
+Initialize configuration.
+
+```sh
+kode config set <key> <value>
+```
+
+Set a configuration value.
 
 ---
 

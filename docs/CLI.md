@@ -1,8 +1,25 @@
 # CLI
 
-> **Implementation status:** The CLI is currently a placeholder binary (`tools/cli/src/main.rs` contains only `fn main() {}`). The command hierarchy and examples below describe the target design.
-
 This document describes the **kode** command-line interface.
+
+## Implementation Status
+
+The CLI foundation is complete. The current implementation provides:
+
+- Command parsing and argument validation
+- Help generation (via clap derive)
+- Command dispatch to the correct subcommand handler
+- Placeholder handler execution
+
+The current implementation does **not** yet provide:
+
+- Repository discovery or file scanning
+- Source code parsing or symbol extraction
+- Knowledge graph construction or querying
+- Storage, caching, or incremental updates
+- MCP server logic or LLM integration
+
+All subcommands accept and validate their arguments, then dispatch to a placeholder handler that confirms the command was received. Backend functionality described below documents the **intended purpose** of each command once the repository processing pipeline is implemented.
 
 ---
 
@@ -10,17 +27,24 @@ This document describes the **kode** command-line interface.
 
 ```
 kode
-├── (no subcommand)        # Scan current repository
-├── config
-│   ├── init               # Initialize configuration
-│   └── set <key> <value>  # Set configuration value
+├── scan [PATH]            # Discover and index a repository
+├── status                 # Show repository indexing status
+├── files                  # Explore indexed repository files
+├── symbols                # Explore extracted symbols
+├── query <QUERY>          # Query repository knowledge
 ├── chat
 │   ├── (no args)          # Start interactive chat session
 │   └── -m <message>       # Ask a single question and exit
-├── mcp serve <path>       # Start MCP server for a repository
-└── cache
-    ├── status             # Inspect repository cache
-    └── clear              # Remove repository cache
+├── cache
+│   ├── status             # Show cache information
+│   └── clear              # Remove cached repository data
+├── config
+│   ├── init               # Create configuration
+│   ├── get <key>          # Read a configuration value
+│   └── set <key> <value>  # Update a configuration value
+├── mcp
+│   └── serve <path>       # Start the MCP server
+└── help                   # Print help for a command
 ```
 
 ---
@@ -29,19 +53,121 @@ kode
 
 | Option | Description |
 |--------|-------------|
-| `--help` | Display help information |
-| `--version` | Display version information |
+| `-C, --repo <PATH>` | Repository to operate on |
+| `-v, --verbose` | Increase logging verbosity (repeatable) |
+| `-q, --quiet` | Suppress non-essential output |
+| `--json` | Machine-readable output |
+| `--no-color` | Disable colored output |
+| `-h, --help` | Print help |
+| `-V, --version` | Print version |
+
+Global options are accepted by all subcommands.
 
 ---
 
-## Configuration
+## Subcommands
 
-Configuration is managed through `kode config` commands.
+### scan
+
+Discover and index a repository. Once the repository processing pipeline is implemented, this command will scan source files, extract symbols and relationships, and update the local knowledge graph. Currently it validates arguments and dispatches to a placeholder handler.
 
 ```sh
-kode config init
-kode config set <key> <value>
+kode scan [PATH] [OPTIONS]
 ```
+
+Options:
+- `--full` — Ignore incremental state and rebuild from scratch
+- `--watch` — Monitor repository for filesystem changes
+- `--threads <N>` — Worker threads
+
+### status
+
+Show repository indexing status. Once indexing is implemented, this will display repository metadata, indexed file statistics, language breakdowns, graph information, and cache location. Currently it validates arguments and dispatches to a placeholder handler.
+
+```sh
+kode status
+```
+
+### files
+
+Explore repository files. Once the knowledge graph is implemented, this will list files known to the graph with optional filtering by language, modified status, or ignored status. Currently it validates arguments and dispatches to a placeholder handler.
+
+```sh
+kode files [OPTIONS]
+```
+
+Options:
+- `--language <LANG>` — Filter by language
+- `--modified` — Show only modified files
+- `--ignored` — Show ignored files
+
+### symbols
+
+Explore extracted language symbols (functions, types, traits, classes, etc.). Once parsing is implemented, this will display symbols extracted from indexed source files. Currently it validates arguments and dispatches to a placeholder handler.
+
+```sh
+kode symbols [OPTIONS]
+```
+
+Options:
+- `--language <LANG>` — Filter by language
+
+### query
+
+Query repository knowledge. Once the query engine is implemented, this will execute deterministic queries against the knowledge graph. Currently it validates arguments and dispatches to a placeholder handler.
+
+```sh
+kode query "<query>"
+```
+
+### chat
+
+Start an interactive repository assistant session. Once LLM integration is implemented, this will answer repository questions using live source code and evidence-backed citations. Currently it validates arguments and dispatches to a placeholder handler.
+
+```sh
+kode chat [OPTIONS]
+```
+
+Options:
+- `-m, --message <TEXT>` — Ask one question and exit
+
+### cache
+
+Manage the local repository cache.
+
+```sh
+kode cache <COMMAND>
+```
+
+Commands:
+- `status` — Show cache information
+- `clear` — Remove cached repository data
+
+### config
+
+Manage kode configuration.
+
+```sh
+kode config <COMMAND>
+```
+
+Commands:
+- `init` — Create configuration
+- `get <key>` — Read a configuration value
+- `set <key> <value>` — Update a configuration value
+
+### mcp
+
+Run or manage the MCP server.
+
+```sh
+kode mcp <COMMAND>
+```
+
+Commands:
+- `serve <path>` — Start the MCP server
+
+All subcommands accept global options (see above).
 
 ---
 
@@ -49,7 +175,32 @@ kode config set <key> <value>
 
 **Scan the current repository:**
 ```sh
-kode
+kode scan
+```
+
+**Scan a specific repository:**
+```sh
+kode scan /path/to/repo --full
+```
+
+**Show repository status:**
+```sh
+kode status
+```
+
+**List indexed files by language:**
+```sh
+kode files --language rust
+```
+
+**List extracted symbols:**
+```sh
+kode symbols --language python
+```
+
+**Query repository knowledge:**
+```sh
+kode query "functions named parse"
 ```
 
 **Start an interactive chat session:**
@@ -77,6 +228,12 @@ kode cache status
 kode cache clear
 ```
 
+**Initialize configuration:**
+```sh
+kode config init
+kode config set api_key YOUR_KEY
+```
+
 ---
 
 ## Environment Variables
@@ -89,9 +246,8 @@ kode cache clear
 
 ## Output Conventions
 
-- All answers include `path:line` citations
-- Evidence is always verifiable against the live repository
 - Command output follows a consistent format for machine parsing where practical
+- Once LLM integration is implemented, all answers will include `path:line` citations verified against the live repository
 
 ---
 
@@ -100,18 +256,18 @@ kode cache clear
 **First-time setup:**
 ```sh
 kode config init
-kode
+kode scan
 ```
 
 **Daily use:**
 ```sh
-kode
+kode scan
 kode chat
 ```
 
 **CI pipeline integration:**
 ```sh
-kode --json
+kode status --json
 ```
 
 ---

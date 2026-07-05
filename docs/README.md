@@ -11,6 +11,10 @@ Contributors should read the architecture documents to understand the
 design intent, then refer to the contributor documents for workspace
 conventions and crate responsibilities.
 
+The CLI specification (`CLI_SPEC.md`) is the implementation contract for
+the command-line interface. It is auto-verified against the generated
+clap help output.
+
 ---
 
 ## Reading Order
@@ -23,6 +27,8 @@ README
 DESIGN
   ↓
 ARCHITECTURE
+  ↓
+CLI_SPEC              (implementation contract)
   ↓
 PIPELINE
   ↓
@@ -64,6 +70,7 @@ MCP
 |----------|-------------|
 | [GUIDELINES.md](GUIDELINES.md) | Workspace conventions, crate design, and development workflow |
 | [CRATE_OVERVIEW.md](CRATE_OVERVIEW.md) | Crate responsibilities and dependency graph |
+| [CLI_SPEC.md](CLI_SPEC.md) | CLI implementation contract (matches generated help) |
 | [CLI.md](CLI.md) | CLI command reference and examples |
 | [ROADMAP.md](ROADMAP.md) | Planned evolution and milestones |
 | [GLOSSARY.md](GLOSSARY.md) | Terminology reference |

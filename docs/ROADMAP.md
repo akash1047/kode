@@ -1,6 +1,18 @@
 # Roadmap
 
-This document describes the planned evolution of **kode** organized by milestone rather than timeline.
+This document describes the evolution of **kode** organized by milestone rather than timeline.
+
+---
+
+## Completed Milestones
+
+### Milestone 1 — CLI Foundation
+
+| | |
+|---|---|
+| Status | ✓ Complete |
+| Delivered | Public CLI contract, command hierarchy, argument parsing, help generation, command dispatch, placeholder handlers, parser validation |
+| Next | Repository discovery and indexing |
 
 ---
 

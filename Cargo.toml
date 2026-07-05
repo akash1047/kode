@@ -17,6 +17,9 @@ edition = "2021"
 rust-version = "1.75"
 license = "MIT"
 
+[workspace.dependencies]
+clap = { version = "4", features = ["derive"] }
+
 [workspace.lints]
 rust.unsafe_code = "deny"
 rust.unused_crate_dependencies = "warn"
