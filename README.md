@@ -353,7 +353,10 @@ Planned capabilities are documented in [docs/ROADMAP.md](docs/ROADMAP.md).
 
 Contributions are welcome.
 
-Please read `DESIGN.md`, the [Glossary](docs/GLOSSARY.md), the [CRATE_OVERVIEW.md](docs/CRATE_OVERVIEW.md), and the documentation index in [docs/README.md](docs/README.md) before contributing.
+Please read `DESIGN.md`, the [Glossary](docs/GLOSSARY.md), the [CRATE_OVERVIEW.md](docs/CRATE_OVERVIEW.md), the [documentation index](docs/README.md), and the [workspace guidelines](docs/GUIDELINES.md) before contributing.
+
+Local CI validation with `act` is documented in the
+[workspace guidelines](docs/GUIDELINES.md).
 
 Every contribution should preserve kode's core guarantees:
 

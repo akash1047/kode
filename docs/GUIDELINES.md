@@ -138,6 +138,99 @@ cargo fmt --all
 cargo clippy --workspace --all-targets
 ```
 
+These commands are enforced by CI. The exact CI equivalents use stricter flags:
+
+```bash
+cargo fmt --all -- --check       # Fail on formatting differences
+cargo clippy --workspace --all-targets -- -D warnings  # Deny warnings
+```
+
+
+## Continuous Integration
+
+The project uses GitHub Actions for CI. The workflow is defined in
+`.github/workflows/ci.yml`.
+
+### What CI validates
+
+| Step | Command |
+|------|---------|
+| Formatting | `cargo fmt --all -- --check` |
+| Linting | `cargo clippy --workspace --all-targets -- -D warnings` |
+| Compilation | `cargo build --workspace` |
+| Tests | `cargo test --workspace` |
+| Documentation | `cargo doc --workspace --no-deps` |
+
+### When CI runs
+
+- On every push to `main` and `dev*` branches.
+- On every pull request targeting `main` and `dev*`.
+
+### Reproducing individual checks
+
+Run the same commands that CI executes. Each command validates a single
+aspect of the workspace:
+
+```bash
+cargo fmt --all -- --check
+cargo clippy --workspace --all-targets -- -D warnings
+cargo build --workspace
+cargo test --workspace
+cargo doc --workspace --no-deps
+```
+
+All commands must succeed. CI uses the exact same commands.
+
+### Running the complete CI workflow
+
+The repository supports local CI validation using [`act`](https://github.com/nektos/act).
+Docker is required. Run the workflow locally before pushing to catch
+configuration and environment issues early.
+
+#### Listing available jobs
+
+```bash
+act -l
+```
+
+Lists the available jobs defined in the workflow.
+
+#### Running validation
+
+```bash
+act -j validate
+```
+
+Executes the `validate` job from `.github/workflows/ci.yml`. This is
+the recommended way to validate CI changes locally.
+
+#### Repository configuration
+
+The repository includes `.actrc` which pins the runner image used by `act`.
+Contributors normally do not need to modify it.
+
+#### Known limitations
+
+The `actions/upload-artifact` step fails under a default `act` setup:
+
+```text
+Unable to get the ACTIONS_RUNTIME_TOKEN env variable
+```
+
+This is expected — `act` does not implement the GitHub Artifact service.
+The step is harmless; all other CI steps complete successfully. GitHub
+Actions uploads artifacts correctly.
+
+### Pull request expectations
+
+Before opening a pull request:
+
+- All CI checks pass on your branch.
+- No Clippy warnings are introduced.
+- Documentation builds without errors.
+- Existing tests continue to pass.
+- New features include tests.
+
 ---
 
 ## Documentation
