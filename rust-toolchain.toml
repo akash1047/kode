@@ -1,0 +1,4 @@
+[toolchain]
+channel = "stable"
+edition = "2021"
+profiles = ["minimal"]
