@@ -1,3 +1,9 @@
+//! Integration tests for repository discovery.
+//!
+//! Tests cover empty repositories, single packages, Cargo workspaces,
+//! language detection, `.gitignore` filtering, deterministic ordering,
+//! and deeply nested directory structures.
+
 #![allow(unused_crate_dependencies)]
 
 use std::collections::BTreeSet;
@@ -108,7 +114,10 @@ fn cargo_workspace_detected() {
     let snapshot = discover(&repo).unwrap();
 
     assert!(
-        matches!(snapshot.workspace().kind(), WorkspaceKind::CargoWorkspace { .. }),
+        matches!(
+            snapshot.workspace().kind(),
+            WorkspaceKind::CargoWorkspace { .. }
+        ),
         "expected CargoWorkspace, got {:?}",
         snapshot.workspace().kind()
     );
@@ -128,11 +137,7 @@ fn language_inventory_populated() {
     let repo = Repository::new(dir.path()).unwrap();
     let snapshot = discover(&repo).unwrap();
 
-    let lang_names: BTreeSet<_> = snapshot
-        .languages()
-        .iter()
-        .map(|l| l.to_string())
-        .collect();
+    let lang_names: BTreeSet<_> = snapshot.languages().iter().map(|l| l.to_string()).collect();
     assert!(lang_names.contains("Rust"));
     assert!(lang_names.contains("Markdown"));
     assert!(lang_names.contains("TOML"));

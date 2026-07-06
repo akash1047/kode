@@ -5,6 +5,16 @@ use crate::error::Error;
 use crate::workspace::detector::WorkspaceDetector;
 use crate::workspace::model::{Workspace, WorkspaceKind, WorkspaceMember};
 
+/// Detects Cargo workspaces by parsing `Cargo.toml` for `[workspace]` or `[package]`.
+///
+/// # Resolution
+///
+/// Member paths support glob patterns (e.g., `crates/*`) which are resolved
+/// by scanning the filesystem for subdirectories containing `Cargo.toml`.
+///
+/// # Determinism
+///
+/// Workspace members are sorted by relative path for deterministic output.
 pub struct CargoWorkspaceDetector;
 
 impl WorkspaceDetector for CargoWorkspaceDetector {
@@ -16,19 +26,17 @@ impl WorkspaceDetector for CargoWorkspaceDetector {
             });
         }
 
-        let content = std::fs::read_to_string(&cargo_toml).map_err(|source| {
-            Error::ManifestRead {
+        let content =
+            std::fs::read_to_string(&cargo_toml).map_err(|source| Error::ManifestRead {
                 path: cargo_toml.clone(),
                 source,
-            }
-        })?;
+            })?;
 
-        let parsed: CargoManifest = toml::from_str(&content).map_err(|source| {
-            Error::ManifestParse {
+        let parsed: CargoManifest =
+            toml::from_str(&content).map_err(|source| Error::ManifestParse {
                 path: cargo_toml.clone(),
                 source,
-            }
-        })?;
+            })?;
 
         if let Some(ws) = &parsed.workspace {
             let members = resolve_workspace_members(root, &ws.members)?;
@@ -66,12 +74,7 @@ fn resolve_workspace_members(
 
     for pattern in patterns {
         if pattern.contains('*') {
-            let parent = root.join(
-                pattern
-                    .rsplit_once('/')
-                    .map(|(p, _)| p)
-                    .unwrap_or("."),
-            );
+            let parent = root.join(pattern.rsplit_once('/').map(|(p, _)| p).unwrap_or("."));
 
             if let Ok(entries) = std::fs::read_dir(&parent) {
                 for entry in entries.flatten() {

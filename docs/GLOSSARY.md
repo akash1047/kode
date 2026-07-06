@@ -36,7 +36,11 @@ A composite detector that coordinates multiple detector implementations in prior
 
 ## Syntax Tree
 
-A language-specific abstract syntax tree (AST) produced by parsing a source file. Syntax trees are lossless — they preserve the complete syntactic structure required by later pipeline stages.
+A language-specific abstract syntax tree (AST) produced by parsing a source file. Syntax trees are lossless — they preserve the complete syntactic structure required by later pipeline stages. Represented by the `SyntaxTree` domain artifact, which stores the relative path, language, source text, Tree-sitter tree, diagnostics, and parser metadata.
+
+## SyntaxTreeInventory
+
+An immutable collection of `FileParseOutcome` entries representing the results of parsing every file in a `RepositorySnapshot`. Each entry distinguishes between Success (clean parse), Recovered (tree with errors), Skipped (unsupported language), and Failed (parse or I/O error). The inventory is the canonical Stage 2 output artifact.
 
 ## Repository Fact
 

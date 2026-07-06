@@ -1,6 +1,7 @@
 use crate::manifest::detector::ManifestDetector;
 use crate::manifest::model::ManifestKind;
 
+/// Detects Cargo manifests by matching the `Cargo.toml` filename.
 pub struct CargoManifestDetector;
 
 impl ManifestDetector for CargoManifestDetector {

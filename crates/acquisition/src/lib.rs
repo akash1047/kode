@@ -52,11 +52,9 @@ mod walk;
 
 pub use discovery::{discover, DefaultRepositoryDiscovery, RepositoryDiscovery};
 pub use error::Error;
-pub use language::{
-    Language, LanguageDetector, LanguageRegistry, ExtensionLanguageDetector,
-};
+pub use language::{ExtensionLanguageDetector, Language, LanguageDetector, LanguageRegistry};
 pub use manifest::{
-    Manifest, ManifestKind, ManifestDetector, ManifestRegistry, CargoManifestDetector,
+    CargoManifestDetector, Manifest, ManifestDetector, ManifestKind, ManifestRegistry,
 };
 pub use repository::{Repository, RepositoryId, RepositoryIdentityService};
 pub use snapshot::{

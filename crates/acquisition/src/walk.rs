@@ -12,6 +12,20 @@ fn extract_io_error(err: ignore::Error) -> std::io::Error {
         .unwrap_or_else(|| std::io::Error::other(msg))
 }
 
+/// Walks the repository filesystem, collecting files and directories.
+///
+/// Uses the `ignore` crate to respect `.gitignore` and other standard
+/// ignore rules, matching kode's policy of only indexing project-owned files.
+///
+/// # Determinism
+///
+/// Both files and directories are sorted by relative path to guarantee
+/// deterministic output across runs.
+///
+/// # Failure Behavior
+///
+/// Filesystem traversal errors are fatal. Individual file metadata
+/// read failures are silently degraded (size defaults to 0, modified to None).
 pub(crate) fn walk_repository(
     root: &Path,
     language_detector: &dyn LanguageDetector,
@@ -19,9 +33,7 @@ pub(crate) fn walk_repository(
     let mut files = Vec::new();
     let mut directories = Vec::new();
 
-    let walker = WalkBuilder::new(root)
-        .standard_filters(true)
-        .build();
+    let walker = WalkBuilder::new(root).standard_filters(true).build();
 
     for result in walker {
         let entry = result.map_err(|e| {

@@ -33,7 +33,7 @@ Every stage produces an immutable artifact consumed by the next stage.
 
 ---
 
-> **Implementation status:** Stage 1 (Repository Discovery) is implemented. Stages 2–8 document the architectural design and are planned as future work.
+> **Implementation status:** Stage 1 (Repository Discovery) and Stage 2 (Parsing) are implemented. Stages 3–8 document the architectural design and are planned as future work.
 
 ## Design Principles
 
@@ -98,7 +98,7 @@ Later stages organize, analyze, and present those facts.
 | Stage | Input | Output | Owner |
 |---------|--------|---------|---------|
 | Repository Discovery | Repository | RepositorySnapshot | Acquisition |
-| Parsing | RepositorySnapshot | Syntax Trees | Acquisition |
+| Parsing | RepositorySnapshot + SourceInventory | Syntax Trees | Analysis |
 | Fact Extraction | Syntax Trees | Repository Facts | Acquisition |
 | Graph Construction | Repository Facts | Knowledge Graph | Graph |
 | Graph Validation | Knowledge Graph | Validated Graph | Graph |
@@ -256,9 +256,9 @@ Partial RepositorySnapshots are never emitted.
 
 ---
 
-## Stage 2 — Parsing (Planned)
+## Stage 2 — Parsing (Implemented)
 
-See [ACQUISITION.md](ACQUISITION.md) for the planned parser architecture specification.
+The Parsing subsystem lives in the `kode-analysis` crate within the `parsing` module. See [ANALYSIS.md](ANALYSIS.md) for the full specification.
 
 ### Purpose
 
@@ -272,17 +272,35 @@ It does not understand architecture.
 
 ---
 
+### Implementation
+
+Parsing is implemented as a pure transformation pipeline:
+
+1. **ParserRegistry** — ordered collection of language-specific parsers with language-keyed dispatch
+2. **ParsingOrchestrator** — iterates files from `RepositorySnapshot`, looks up source text in `SourceInventory`, dispatches to parsers
+3. **RustParser** — Tree-sitter-backed parser for Rust source files (initial implementation)
+4. **SourceInventory** — immutable source text storage, loaded before parsing begins
+
+The pipeline reads file content **before** parsing begins, constructing a `SourceInventory`. Parsing itself performs no filesystem I/O — it is a pure transformation over immutable inputs.
+
+---
+
 ### Input
 
-RepositorySnapshot.
+RepositorySnapshot + SourceInventory.
 
 ---
 
 ### Output
 
-Syntax Trees.
+SyntaxTreeInventory.
 
-Each supported language produces its own abstract syntax tree (AST).
+Each entry in the inventory is a `FileParseOutcome` that discriminates between:
+
+- **Success** — clean parse, tree is available
+- **Recovered** — tree produced with syntax errors, still usable
+- **Skipped** — language has no registered parser
+- **Failed** — parse error, no tree produced
 
 ---
 
@@ -290,27 +308,32 @@ Each supported language produces its own abstract syntax tree (AST).
 
 Parsing is responsible for:
 
-- selecting the correct parser
+- selecting the correct parser via `ParserRegistry::dispatch()`
 - parsing source files
-- reporting syntax errors
+- reporting syntax errors as structured `Diagnostic` values
 - preserving source locations
 - exposing language-specific syntax
 
 Supported parsers operate independently.
 
-Adding a new language parser should not require changes elsewhere in the
-pipeline.
+Adding a new language parser requires implementing the `Parser` trait and registering it in a `ParserRegistry`.
 
 ---
 
 ### Produced Artifact
 
-Syntax Trees.
+SyntaxTreeInventory.
 
-Each syntax tree represents one source file.
+Each `SyntaxTree` represents one successfully parsed source file and stores:
 
-Syntax trees preserve the complete syntactic structure required by later
-pipeline stages.
+- relative path
+- language
+- source text (shared via `Arc<str>`)
+- diagnostics (if any)
+- parser metadata (name, version, grammar version, backend identifier)
+- internal syntax backend (opaque, not exposed in public API)
+
+The inventory accounts for every file in the snapshot, including skipped and failed outcomes.
 
 ---
 
@@ -321,9 +344,11 @@ Parsing must satisfy the following constraints.
 - deterministic
 - language specific
 - lossless
+- no filesystem I/O
 - no repository interpretation
 - no graph construction
 - no dependency analysis
+- no mutation of `RepositorySnapshot` or `SourceInventory`
 
 ---
 
@@ -331,12 +356,13 @@ Parsing must satisfy the following constraints.
 
 Parsing may fail due to:
 
-- malformed source code
+- malformed source code (produces `Recovered` tree)
 - unsupported language versions
 - parser implementation errors
 
-Parser failures should identify the affected file without corrupting the
-remaining pipeline.
+Parser failures identify the affected file without corrupting the remaining pipeline. One malformed file never aborts repository parsing.
+
+---
 
 ## Stage 3 — Fact Extraction (Planned)
 
@@ -669,6 +695,8 @@ Persistence may fail because of:
 
 Failed persistence never exposes partial graph revisions.
 
+---
+
 ## Stage 7 — Analysis
 
 ### Purpose
@@ -891,6 +919,7 @@ This document references the following terms defined in [GLOSSARY.md](GLOSSARY.m
 
 - [RepositorySnapshot](GLOSSARY.md#repositorysnapshot)
 - [Syntax Tree](GLOSSARY.md#syntax-tree)
+- [SyntaxTreeInventory](GLOSSARY.md#syntaxtreeinventory)
 - [Repository Fact](GLOSSARY.md#repository-fact)
 - [Knowledge Graph](GLOSSARY.md#knowledge-graph)
 - [Graph Revision](GLOSSARY.md#graph-revision)
@@ -906,7 +935,7 @@ Each stage belongs to exactly one architectural subsystem.
 | Pipeline Stage | Owning Subsystem |
 |---------------|------------------|
 | Repository Discovery | Acquisition (see [ACQUISITION.md](ACQUISITION.md)) |
-| Parsing | Acquisition (see [ACQUISITION.md](ACQUISITION.md)) |
+| Parsing | Analysis (see [ANALYSIS.md](ANALYSIS.md)) |
 | Fact Extraction | Acquisition (see [ACQUISITION.md](ACQUISITION.md)) |
 | Graph Construction | Knowledge Graph |
 | Graph Validation | Knowledge Graph |
@@ -958,7 +987,7 @@ The pipeline is intentionally extensible.
 Supported extension points include:
 
 - **repository discovery** — workspace detectors, manifest detectors, and language detectors extend Stage 1 without modifying the orchestration layer
-- language parsers
+- **language parsers** — register new parsers with `ParserRegistry`; implement `Parser` trait for each language; parser backends encapsulated behind the trait
 - manifest parsers
 - fact extractors
 - graph builders
@@ -1051,4 +1080,3 @@ existing stages while preserving deterministic repository understanding.
 
 - [DESIGN.md](../DESIGN.md) — System design and invariants
 - [Documentation index](README.md) — All documents
-

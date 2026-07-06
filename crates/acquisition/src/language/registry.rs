@@ -4,6 +4,19 @@ use crate::language::detector::LanguageDetector;
 use crate::language::extension::ExtensionLanguageDetector;
 use crate::language::model::Language;
 
+/// Ordered collection of language detectors with first-match dispatch.
+///
+/// # Registration Order
+///
+/// Detectors are consulted in registration order. The first detector
+/// that returns `Some(language)` wins. This allows custom detectors
+/// to override the default extension-based detection.
+///
+/// # Extension
+///
+/// New detection strategies implement [`LanguageDetector`] and register
+/// via [`register`](Self::register). Custom detectors registered before
+/// the default will take priority.
 pub struct LanguageRegistry {
     detectors: Vec<Box<dyn LanguageDetector>>,
 }
@@ -81,10 +94,7 @@ mod tests {
         let mut registry = LanguageRegistry::new();
         registry.register(Box::new(MockCustomDetector));
         registry.register(Box::new(ExtensionLanguageDetector));
-        assert_eq!(
-            registry.detect(Path::new("main.rs")),
-            Some(Language::Rust)
-        );
+        assert_eq!(registry.detect(Path::new("main.rs")), Some(Language::Rust));
     }
 
     #[test]
@@ -97,9 +107,6 @@ mod tests {
     #[test]
     fn default_registry_includes_extension_detector() {
         let registry = LanguageRegistry::default();
-        assert_eq!(
-            registry.detect(Path::new("main.rs")),
-            Some(Language::Rust)
-        );
+        assert_eq!(registry.detect(Path::new("main.rs")), Some(Language::Rust));
     }
 }

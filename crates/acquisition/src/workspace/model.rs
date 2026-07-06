@@ -1,5 +1,10 @@
 use std::path::{Path, PathBuf};
 
+/// A member package within a workspace.
+///
+/// Carries both the member's relative path and the path to its manifest,
+/// which may differ (e.g., in Cargo workspaces the manifest is always
+/// `Cargo.toml` within the member directory).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct WorkspaceMember {
     pub(crate) relative_path: PathBuf,
@@ -16,6 +21,13 @@ impl WorkspaceMember {
     }
 }
 
+/// Discriminated workspace structure kind.
+///
+/// # Invariants
+///
+/// - [`WorkspaceKind::None`] is the fallback when no detector matches.
+/// - [`WorkspaceKind::SinglePackage`] has exactly one manifest.
+/// - [`WorkspaceKind::CargoWorkspace`] has at least one member.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum WorkspaceKind {
     CargoWorkspace {
@@ -28,12 +40,23 @@ pub enum WorkspaceKind {
     None,
 }
 
+/// Detected workspace structure for a repository root.
+///
+/// Produced by [`WorkspaceDetector`](super::WorkspaceDetector) implementations
+/// and consumed by [`RepositoryDiscovery`](crate::discovery::RepositoryDiscovery)
+/// to determine manifest paths and project structure.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Workspace {
     pub(crate) kind: WorkspaceKind,
 }
 
 impl Workspace {
+    pub fn none() -> Self {
+        Self {
+            kind: WorkspaceKind::None,
+        }
+    }
+
     pub fn kind(&self) -> &WorkspaceKind {
         &self.kind
     }

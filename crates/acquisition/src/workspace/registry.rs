@@ -4,6 +4,17 @@ use crate::error::Error;
 use crate::workspace::detector::WorkspaceDetector;
 use crate::workspace::model::{Workspace, WorkspaceKind};
 
+/// Ordered collection of workspace detectors with first-match dispatch.
+///
+/// Unlike other registries, workspace detectors that return
+/// [`WorkspaceKind::None`] are skipped to allow fallthrough to the
+/// next detector. Only when all detectors return `None` does the
+/// registry return `WorkspaceKind::None`.
+///
+/// # Extension
+///
+/// New workspace types require a [`WorkspaceDetector`] implementation
+/// and registration via [`register`](Self::register).
 pub struct WorkspaceRegistry {
     detectors: Vec<Box<dyn WorkspaceDetector>>,
 }

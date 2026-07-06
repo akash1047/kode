@@ -1,3 +1,19 @@
+//! CLI binary: thin composition root for the `kode` command-line tool.
+//!
+//! # Philosophy
+//!
+//! - The binary is thin: all business logic lives in crates.
+//! - The binary owns CLI parsing, dependency wiring, and command dispatch.
+//! - The binary does not implement business logic.
+//!
+//! # Extension Points
+//!
+//! New subcommands are added by:
+//! 1. Adding a variant to [`Commands`].
+//! 2. Implementing the dispatch logic in `main`.
+//!
+//! The [`Cli`] struct defines global options shared across all subcommands.
+
 use clap::{Parser, Subcommand};
 
 #[derive(Parser)]
@@ -54,6 +70,10 @@ struct Cli {
     no_color: bool,
 }
 
+/// All supported CLI commands.
+///
+/// Each variant corresponds to a top-level subcommand. New commands
+/// should be added here and dispatched in [`main`].
 #[derive(Subcommand)]
 enum Commands {
     #[command(
@@ -149,6 +169,7 @@ enum Commands {
     },
 }
 
+/// Cache management subcommands.
 #[derive(Subcommand)]
 enum CacheCommands {
     #[command(about = "Show cache information")]
@@ -157,6 +178,7 @@ enum CacheCommands {
     Clear,
 }
 
+/// Configuration management subcommands.
 #[derive(Subcommand)]
 enum ConfigCommands {
     #[command(about = "Create configuration")]
@@ -175,6 +197,7 @@ enum ConfigCommands {
     },
 }
 
+/// MCP (Model Context Protocol) server subcommands.
 #[derive(Subcommand)]
 enum McpCommands {
     #[command(about = "Start the MCP server")]
@@ -184,6 +207,7 @@ enum McpCommands {
     },
 }
 
+/// Generates a placeholder message for unimplemented commands.
 fn placeholder_message(command: &str) -> String {
     format!("{} has not been implemented yet.", command)
 }

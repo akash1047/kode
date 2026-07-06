@@ -1,6 +1,17 @@
 use crate::manifest::detector::ManifestDetector;
 use crate::manifest::model::ManifestKind;
 
+/// Ordered collection of manifest detectors with first-match dispatch.
+///
+/// # Registration Order
+///
+/// Detectors are consulted in registration order. The first detector
+/// that returns `Some(kind)` wins.
+///
+/// # Extension
+///
+/// New manifest types require a [`ManifestDetector`] implementation and
+/// registration via [`register`](Self::register).
 pub struct ManifestRegistry {
     detectors: Vec<Box<dyn ManifestDetector>>,
 }
@@ -77,10 +88,7 @@ mod tests {
         let mut registry = ManifestRegistry::new();
         registry.register(Box::new(MockManifestDetectorA));
         registry.register(Box::new(MockManifestDetectorB));
-        assert_eq!(
-            registry.detect("a.toml"),
-            Some(ManifestKind::CargoManifest)
-        );
+        assert_eq!(registry.detect("a.toml"), Some(ManifestKind::CargoManifest));
     }
 
     #[test]
@@ -88,10 +96,7 @@ mod tests {
         let mut registry = ManifestRegistry::new();
         registry.register(Box::new(MockManifestDetectorA));
         registry.register(Box::new(MockManifestDetectorB));
-        assert_eq!(
-            registry.detect("b.toml"),
-            Some(ManifestKind::CargoManifest)
-        );
+        assert_eq!(registry.detect("b.toml"), Some(ManifestKind::CargoManifest));
     }
 
     #[test]

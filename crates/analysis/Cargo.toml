@@ -9,3 +9,10 @@ license.workspace = true
 workspace = true
 
 [dependencies]
+kode-acquisition = { path = "../acquisition" }
+tree-sitter = "0.26"
+tree-sitter-rust = "0.24"
+thiserror.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true

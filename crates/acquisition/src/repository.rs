@@ -2,6 +2,9 @@ use std::path::{Path, PathBuf};
 
 use crate::Error;
 
+/// Stable identifier for a repository.
+///
+/// Used to correlate storage revisions across sessions.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct RepositoryId(String);
 
@@ -15,10 +18,21 @@ impl RepositoryId {
     }
 }
 
+/// Generates stable repository identifiers from filesystem paths.
+///
+/// The identity must remain stable across sessions for the same
+/// repository to enable incremental storage updates.
 pub trait RepositoryIdentityService {
     fn generate_id(&self, root: &Path) -> RepositoryId;
 }
 
+/// A discovered and validated repository root.
+///
+/// # Invariants
+///
+/// - The root path is always canonicalized (absolute, symlinks resolved).
+/// - The root always exists and is a directory.
+/// - Identity is optional until assigned by an external service.
 #[derive(Debug, Clone)]
 pub struct Repository {
     identity: Option<RepositoryId>,

@@ -1,6 +1,15 @@
 use serde::{Deserialize, Serialize};
 use std::fmt;
 
+/// Programming language known to the detection and parsing subsystems.
+///
+/// Each variant corresponds to a language that can be detected by file
+/// extension and, where supported, parsed into a syntax tree.
+///
+/// # Invariants
+///
+/// - Variants are ordered for deterministic comparison (via `Ord`).
+/// - New variants require corresponding parser implementations.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub enum Language {
     Rust,

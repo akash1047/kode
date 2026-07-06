@@ -7,6 +7,9 @@ use crate::manifest::Manifest;
 use crate::repository::Repository;
 use crate::workspace::Workspace;
 
+/// Filesystem metadata for a discovered file.
+///
+/// Captured during repository walking for incremental change detection.
 #[derive(Debug, Clone)]
 pub struct FileMetadata {
     size: u64,
@@ -27,6 +30,10 @@ impl FileMetadata {
     }
 }
 
+/// A single file discovered during repository traversal.
+///
+/// Carries its relative path, filesystem metadata, and detected language.
+/// Files are the primary unit of processing in subsequent pipeline stages.
 #[derive(Debug, Clone)]
 pub struct RepositoryFile {
     pub(crate) relative_path: PathBuf,
@@ -35,6 +42,18 @@ pub struct RepositoryFile {
 }
 
 impl RepositoryFile {
+    pub fn new(
+        relative_path: impl Into<PathBuf>,
+        metadata: FileMetadata,
+        language: Option<Language>,
+    ) -> Self {
+        Self {
+            relative_path: relative_path.into(),
+            metadata,
+            language,
+        }
+    }
+
     pub fn relative_path(&self) -> &Path {
         &self.relative_path
     }
@@ -56,17 +75,33 @@ impl RepositoryFile {
     }
 }
 
+/// A directory discovered during repository traversal.
 #[derive(Debug, Clone)]
 pub struct RepositoryDirectory {
     pub(crate) relative_path: PathBuf,
 }
 
 impl RepositoryDirectory {
+    pub fn new(relative_path: impl Into<PathBuf>) -> Self {
+        Self {
+            relative_path: relative_path.into(),
+        }
+    }
+
     pub fn relative_path(&self) -> &Path {
         &self.relative_path
     }
 }
 
+/// Ordered collection of discovered repository files.
+///
+/// Maintains insertion order and provides standard collection traits
+/// for ergonomic construction from iterators.
+///
+/// # Invariants
+///
+/// - Files are sorted by relative path before being stored in [`RepositorySnapshot`].
+/// - Every file is guaranteed to have a non-empty relative path.
 #[derive(Debug, Clone, Default)]
 pub struct FileInventory(Vec<RepositoryFile>);
 
@@ -132,6 +167,9 @@ impl AsRef<[RepositoryFile]> for FileInventory {
     }
 }
 
+/// Ordered collection of discovered repository directories.
+///
+/// Mirrors [`FileInventory`] in structure and guarantees.
 #[derive(Debug, Clone, Default)]
 pub struct DirectoryInventory(Vec<RepositoryDirectory>);
 
@@ -197,6 +235,10 @@ impl AsRef<[RepositoryDirectory]> for DirectoryInventory {
     }
 }
 
+/// Ordered collection of detected build manifests.
+///
+/// Provides deduplication via [`contains_path`](Self::contains_path) and
+/// deterministic ordering via [`sort`](Self::sort).
 #[derive(Debug, Clone)]
 pub struct ManifestInventory(Vec<Manifest>);
 
@@ -220,7 +262,8 @@ impl ManifestInventory {
     }
 
     pub fn sort(&mut self) {
-        self.0.sort_by(|a, b| a.relative_path().cmp(b.relative_path()));
+        self.0
+            .sort_by(|a, b| a.relative_path().cmp(b.relative_path()));
     }
 
     pub fn contains_path(&self, path: &Path) -> bool {
@@ -284,6 +327,10 @@ impl AsRef<[Manifest]> for ManifestInventory {
     }
 }
 
+/// Set of languages present across discovered files.
+///
+/// Derived from [`RepositoryFile`] language annotations. Uses [`BTreeSet`]
+/// for deterministic ordering.
 #[derive(Debug, Clone)]
 pub struct LanguageInventory(BTreeSet<Language>);
 
@@ -353,6 +400,17 @@ impl Extend<Language> for LanguageInventory {
     }
 }
 
+/// Immutable result of repository discovery (pipeline Stage 1 output).
+///
+/// Carries all discovered information about a repository at a point in time:
+/// its identity, workspace structure, files, directories, manifests, and languages.
+///
+/// # Invariants
+///
+/// - The snapshot is immutable after construction.
+/// - The snapshot always has a valid [`Repository`] and [`Workspace`].
+/// - File and directory ordering is deterministic.
+/// - Language inventory is consistent with file language annotations.
 #[derive(Debug, Clone)]
 pub struct RepositorySnapshot {
     repository: Repository,
@@ -405,6 +463,20 @@ impl RepositorySnapshot {
     }
 }
 
+/// Builder for assembling a [`RepositorySnapshot`].
+///
+/// # Required Fields
+///
+/// - [`repository`](Self::repository)
+/// - [`workspace`](Self::workspace)
+///
+/// Other fields default to empty inventories. If [`language_inventory`](Self::language_inventory)
+/// is not provided, it is derived from file language annotations.
+///
+/// # Invariants
+///
+/// - [`build`](Self::build) fails if repository or workspace is missing.
+/// - Unset inventories default to empty (never `None`).
 #[derive(Debug)]
 pub struct SnapshotBuilder {
     repository: Option<Repository>,
@@ -461,16 +533,13 @@ impl SnapshotBuilder {
         let repository = self.repository.ok_or("repository is required")?;
         let workspace = self.workspace.ok_or("workspace is required")?;
         let file_inventory = self.files.unwrap_or_default();
-        let directory_inventory = self
-            .directories
-            .unwrap_or_default();
-        let manifest_inventory = self
-            .manifests
-            .unwrap_or_default();
+        let directory_inventory = self.directories.unwrap_or_default();
+        let manifest_inventory = self.manifests.unwrap_or_default();
 
-        let language_inventory = self.languages.unwrap_or_else(|| {
-            LanguageInventory::from_files(file_inventory.as_slice())
-        });
+        // Derive language inventory from files if not explicitly provided.
+        let language_inventory = self
+            .languages
+            .unwrap_or_else(|| LanguageInventory::from_files(file_inventory.as_slice()));
 
         Ok(RepositorySnapshot {
             repository,
@@ -537,11 +606,7 @@ mod tests {
             .build()
             .unwrap();
 
-        let langs: BTreeSet<_> = snapshot
-            .languages()
-            .iter()
-            .map(|l| l.to_string())
-            .collect();
+        let langs: BTreeSet<_> = snapshot.languages().iter().map(|l| l.to_string()).collect();
         let mut expected = BTreeSet::new();
         expected.insert("Rust".to_string());
         expected.insert("Markdown".to_string());
@@ -568,10 +633,7 @@ mod tests {
             .unwrap();
 
         assert_eq!(snapshot.manifests().len(), 1);
-        assert_eq!(
-            snapshot.manifests()[0].kind(),
-            &ManifestKind::CargoManifest
-        );
+        assert_eq!(snapshot.manifests()[0].kind(), &ManifestKind::CargoManifest);
     }
 
     #[test]
@@ -599,13 +661,11 @@ mod tests {
     #[test]
     fn snapshot_builder_derives_languages_from_files() {
         let repo = dummy_repo();
-        let files = FileInventory::new(vec![
-            RepositoryFile {
-                relative_path: PathBuf::from("main.rs"),
-                metadata: FileMetadata::new(100, None),
-                language: Some(Language::Rust),
-            },
-        ]);
+        let files = FileInventory::new(vec![RepositoryFile {
+            relative_path: PathBuf::from("main.rs"),
+            metadata: FileMetadata::new(100, None),
+            language: Some(Language::Rust),
+        }]);
 
         let snapshot = SnapshotBuilder::new()
             .repository(repo)
@@ -652,10 +712,8 @@ mod tests {
 
     #[test]
     fn language_inventory() {
-        let inv = LanguageInventory::from_languages(BTreeSet::from([
-            Language::Rust,
-            Language::Toml,
-        ]));
+        let inv =
+            LanguageInventory::from_languages(BTreeSet::from([Language::Rust, Language::Toml]));
         assert_eq!(inv.len(), 2);
         assert!(inv.contains(&Language::Rust));
         assert!(!inv.contains(&Language::Python));

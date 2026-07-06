@@ -59,6 +59,10 @@ The architecture follows several fundamental principles defined in [DESIGN.md](.
 
 These principles are documented fully in DESIGN.md. All subsystems inherit them.
 
+### Pipeline Ownership Note
+
+The pipeline ownership table in [PIPELINE.md](PIPELINE.md) originally assigned Parsing to Acquisition. During development, Parsing was implemented in the `kode-analysis` crate to avoid introducing a new crate prematurely. This is a deployment decision — if the Parsing subsystem later justifies its own crate, it should be extracted from analysis before public APIs stabilize.
+
 ---
 
 ## System Context
@@ -129,12 +133,12 @@ Responsibilities include
 - snapshot construction
 
 The Acquisition boundary artifact is the **RepositorySnapshot** — an
-immutable structural snapshot of the repository. Parsing and fact
-extraction are planned but not yet implemented.
+immutable structural snapshot of the repository containing file inventory,
+directory hierarchy, manifest locations, and language inventory.
 
 Output:
 
-RepositorySnapshot (current). Repository facts (planned).
+RepositorySnapshot.
 
 See:
 
@@ -184,23 +188,26 @@ See:
 
 ## Analysis Layer
 
-Responsible for deriving information from the graph.
+Responsible for deriving information from the repository and graph.
 
-Examples include
+Responsibilities include
 
-- dependency analysis
-- impact analysis
-- cycle detection
-- architecture metrics
-- dead code detection
+- **Parsing (Stage 2)** — transforms `RepositorySnapshot` and `SourceInventory` into `SyntaxTreeInventory` using language-specific parsers with an encapsulated syntax backend
+- dependency analysis (planned)
+- impact analysis (planned)
+- cycle detection (planned)
+- architecture metrics (planned)
+- dead code detection (planned)
 
-Analysis consumes the graph.
+The Analysis boundary artifact is the **SyntaxTreeInventory** — an immutable
+collection of parse outcomes for every file in the snapshot.
 
-It never modifies repository knowledge.
+Parsing is the entry point to the Analysis layer and the Stage 2 producer.
 
 See:
 
 - ANALYSIS.md
+- PIPELINE.md
 
 ---
 

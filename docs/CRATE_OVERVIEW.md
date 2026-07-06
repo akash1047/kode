@@ -54,9 +54,8 @@ Dependencies flow downward. No circular dependencies are permitted.
 - Workspace and Manifest domain models
 
 **Planned Responsibility**
-- Source code parsing (planned)
 - Fact extraction (planned)
-- Parser integration (planned)
+- Parser integration (planned; parsing lives in analysis crate during initial development)
 
 ---
 
@@ -95,7 +94,18 @@ Dependencies flow downward. No circular dependencies are permitted.
 **Path:** `crates/analysis/`
 
 **Current State**
-- Placeholder crate.
+- Parsing subsystem (Pipeline Stage 2) — transforms `RepositorySnapshot` and `SourceInventory` into `SyntaxTreeInventory`
+- `Parser` trait for language-specific parser implementations (no `can_parse()` — selection is language-keyed)
+- `ParserRegistry` with language-keyed dispatch (separate dispatcher, not a parser implementation)
+- `RustParser` — Tree-sitter-backed Rust parser
+- `ParsingOrchestrator` — pure transformation over immutable inputs (no filesystem I/O)
+- `SourceInventory` — immutable source text storage (`Arc<str>`) loaded before parsing
+- `SyntaxTree`, `SyntaxTreeInventory`, `FileParseOutcome` — immutable domain artifacts
+- `SyntaxTreeInventory` with indexed lookup (`HashMap`) and deterministic iteration
+- Structured diagnostics model (`Diagnostic`, `Severity`)
+- Error taxonomy covering parser initialization and unsupported languages
+- Tree-sitter fully encapsulated behind `pub(crate)` adapter — no Tree-sitter types in public API
+- Expanded parser metadata (`grammar_version`, `backend_id`)
 
 **Planned Responsibility**
 - Dependency analysis

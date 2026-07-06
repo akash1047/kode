@@ -3,6 +3,13 @@ use std::path::Path;
 use crate::language::detector::LanguageDetector;
 use crate::language::model::Language;
 
+/// Detects language by mapping file extensions to known languages.
+///
+/// This is the default detection strategy and is always registered
+/// first in [`LanguageRegistry`]. It handles the common case while
+/// more sophisticated detectors (e.g., shebang-based) can be added.
+///
+/// [`LanguageRegistry`]: super::LanguageRegistry
 pub struct ExtensionLanguageDetector;
 
 impl LanguageDetector for ExtensionLanguageDetector {
