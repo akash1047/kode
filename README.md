@@ -15,12 +15,24 @@ kode builds a deterministic understanding of your repository and answers questio
 
 ## Current Status
 
-The CLI foundation and public command interface are **implemented**. The full command hierarchy, global options, help generation, command dispatch, and placeholder handlers are in place. The CLI establishes the public contract for all kode operations.
+The **Acquisition** subsystem is implemented. It discovers repository structure and produces an immutable structural snapshot of the repository:
 
-Repository processing **is not yet implemented**. The following capabilities remain under development:
+- Repository discovery orchestration
+- Workspace detection
+- Filesystem traversal (.gitignore-aware)
+- Manifest discovery
+- Language detection
+- RepositorySnapshot with typed inventories
+- Detector architecture with registries (WorkspaceDetector, ManifestDetector, LanguageDetector)
+- Default detectors for Cargo workspaces, Cargo manifests, and extension-based language detection
 
-- Repository discovery and scanning
-- Language parsing (Tree-sitter)
+The CLI command interface (argument parsing, help generation, command dispatch) is also implemented. The `scan` subcommand has not yet been wired to the acquisition library — all subcommands currently return placeholder messages.
+
+The following capabilities are **planned** and not yet implemented:
+
+- Source code parsing
+- Syntax tree generation
+- Fact extraction
 - Knowledge Graph construction
 - Incremental caching and storage
 - Query execution
@@ -28,15 +40,7 @@ Repository processing **is not yet implemented**. The following capabilities rem
 - MCP server logic
 - LLM integration
 
-Running a kode command will:
-- Parse arguments and validate input
-- Generate help output when requested
-- Dispatch to the appropriate subcommand handler
-- Return a placeholder message confirming the command was received
-
-No repository processing, file parsing, knowledge graph construction, storage, or LLM integration has been implemented yet.
-
-Contributors should read `DESIGN.md` and the documentation index in `docs/README.md` before starting work.
+Contributors should read `DESIGN.md`, [ACQUISITION.md](docs/ACQUISITION.md), and the [documentation index](docs/README.md) before starting work.
 
 ---
 
@@ -52,6 +56,7 @@ Neither guarantees that an answer reflects the current state of your repository.
 kode takes a different approach.
 
 It parses your project, builds a deterministic **Knowledge Graph** from source code and project metadata, persists it locally for incremental updates, and requires every answer to be verified against the repository before it is returned.
+The Acquisition subsystem — repository discovery, workspace detection, and snapshot construction — is implemented. The Knowledge Graph, parsing, and downstream stages are planned.
 
 The Knowledge Graph is an implementation detail—not an AI-generated artifact. It is produced entirely through deterministic parsing and analysis.
 
@@ -61,15 +66,25 @@ The LLM never invents facts. It uses the graph to locate relevant parts of the r
 
 ## Features
 
+**Implemented:**
+
+* **Gitignore-aware filesystem traversal** — respects project boundaries automatically
+* **Workspace detection** — identifies single-package and multi-package Cargo workspaces
+* **Manifest discovery** — detects build configuration and package manifests
+* **Language detection** — classifies files by programming language via extension mapping
+* **RepositorySnapshot** — immutable structural snapshot of the repository with typed inventories
+* **Detector architecture** — composable, registry-based extension model
+
+**Planned:**
+
 * **Evidence-backed answers** — every claim includes `path:line` citations
 * **Deterministic Knowledge Graph** — built from source code and project metadata
 * **Incremental indexing** — only changed files are reparsed
 * **Interactive REPL** — terminal chat with full repository awareness
 * **One-shot queries** — ask a question and exit
 * **MCP server** — expose your repository to any MCP-compatible AI agent
-* **Tree-sitter symbol extraction** — Rust, Python, TypeScript, JavaScript, Go, Java, C, C++, C#, Ruby
-* **Manifest awareness** — Cargo, npm, Python, Docker and more
-* **Gitignore-aware** — respects project boundaries automatically
+* **Tree-sitter symbol extraction** — Rust, Python, TypeScript, JavaScript, Go, Java and more
+* **Manifest awareness** — npm, Python, Docker and more
 * **Local-first** — indexes remain on your machine
 
 ---
@@ -94,44 +109,16 @@ Initialize configuration:
 
 ```sh
 kode config init
-kode config set api_key YOUR_KEY
 ```
 
-Scan the current repository:
+Scan the current repository (placeholder — not yet wired to the acquisition library):
 
 ```sh
 kode scan
 ```
 
-Start an interactive chat session:
-
-```sh
-kode chat
-```
-
-Ask a single question:
-
-```sh
-kode chat -m "Where is authentication implemented?"
-```
-
-Run the MCP server:
-
-```sh
-kode mcp serve .
-```
-
-Check cache status:
-
-```sh
-kode cache status
-```
-
-Clear the repository cache:
-
-```sh
-kode cache clear
-```
+All subcommands currently validate arguments and return a placeholder message.
+Full repository processing is under development. See [docs/ACQUISITION.md](docs/ACQUISITION.md) for the implemented Acquisition subsystem.
 
 ---
 
@@ -141,34 +128,37 @@ kode cache clear
 Repository
      │
      ▼
-Repository Discovery
+RepositoryDiscovery
      │
      ▼
-Language Parsers
-(Tree-sitter, manifests, configs)
+RepositorySnapshot          ◄── Acquisition boundary (implemented)
      │
      ▼
-Knowledge Graph
+Parsing                     ─── Planned
      │
-     ├── Incremental SQLite Cache
+     ▼
+Fact Extraction             ─── Planned
+     │
+     ▼
+Knowledge Graph             ─── Planned
+     │
+     ├── Storage
      ├── Query Engine
      ├── Analysis
-     ├── MCP
-     ├── CLI
-     └── LLM
+     └── Interfaces
 ```
 
-The Knowledge Graph is the canonical representation of the repository.
+The Acquisition boundary produces an **immutable structural snapshot of the repository** containing workspace structure, files, directories, manifests, and language inventories.
 
-It is built entirely through deterministic parsing and analysis.
+Parsing, fact extraction, and Knowledge Graph construction are planned future work — see [ACQUISITION.md](docs/ACQUISITION.md) and [PIPELINE.md](docs/PIPELINE.md).
 
-When answering a question, kode uses the graph to efficiently locate relevant code, then reads the original source files to verify every claim before returning an answer.
+When the full pipeline is implemented, kode will use the graph to efficiently locate relevant code, then read original source files to verify every claim before returning an answer.
 
 ---
 
-## Evidence First
+## Evidence First (Planned)
 
-Every answer follows the same process:
+When the full pipeline is implemented, every answer will follow the same process:
 
 ```text
 Question
@@ -195,9 +185,9 @@ The source code remains the final authority.
 
 ---
 
-## Incremental Cache
+## Incremental Cache (Planned)
 
-kode stores repository metadata locally to avoid reparsing unchanged files.
+kode will store repository metadata locally to avoid reparsing unchanged files.
 
 Default location:
 
@@ -205,7 +195,7 @@ Default location:
 ~/.cache/kode/<repository-id>/
 ```
 
-The cache currently stores:
+The cache is planned to store:
 
 * File metadata
 * File hashes
@@ -214,83 +204,79 @@ The cache currently stores:
 * Project manifests
 * Repository metadata
 
-Future releases will extend the cache with richer repository relationships and analysis.
+Incremental caching is not yet implemented.
 
 ---
 
 ## Commands
 
+All commands currently accept arguments and return a placeholder message.
+
 ```sh
 kode scan
 ```
 
-Discover and index a repository.
+Discover repository structure and produce a RepositorySnapshot (intended behavior — not yet wired).
 
 ```sh
 kode status
 ```
 
-Show repository indexing status.
+Show repository indexing status (planned).
 
 ```sh
 kode files
 ```
 
-Explore indexed repository files.
+Explore repository files (planned).
 
 ```sh
 kode symbols
 ```
 
-Explore extracted symbols.
+Explore extracted symbols (planned).
 
 ```sh
 kode query "<query>"
 ```
 
-Query repository knowledge.
+Query repository knowledge (planned).
 
 ```sh
 kode chat
 ```
 
-Interactive chat session.
+Interactive chat session (planned).
 
 ```sh
 kode chat -m "..."
 ```
 
-Ask a single question.
+Ask a single question (planned).
 
 ```sh
 kode mcp serve .
 ```
 
-Run the MCP server.
+Run the MCP server (planned).
 
 ```sh
 kode cache status
 ```
 
-Inspect repository cache.
+Inspect repository cache (planned).
 
 ```sh
 kode cache clear
 ```
 
-Remove the cache for the current repository.
+Remove the cache for the current repository (planned).
 
 ```sh
 kode config init
 ```
 
 Initialize configuration.
-
-```sh
-kode config set <key> <value>
-```
-
-Set a configuration value.
 
 ---
 
@@ -312,7 +298,7 @@ Repository indexes stay on your machine.
 
 ### Incremental
 
-Only modified files are reparsed.
+Only modified files will be reparsed.
 
 ### Composable
 
@@ -328,6 +314,7 @@ See the [documentation index](docs/README.md) for a complete map of all document
 |----------|---------|
 | `DESIGN.md` | System design and architecture |
 | `docs/ARCHITECTURE.md` | High-level architecture |
+| `docs/ACQUISITION.md` | Acquisition subsystem — current implementation |
 | `docs/PIPELINE.md` | Repository processing pipeline |
 | `docs/KNOWLEDGE_GRAPH.md` | Knowledge Graph specification |
 | `docs/STORAGE.md` | Persistence and caching |

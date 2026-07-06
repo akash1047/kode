@@ -7,10 +7,10 @@ and the architectural principles that guide the project.
 
 Detailed specifications are documented separately under `docs/`.
 
-> **Note:** This document describes the target architecture. The workspace is
-> currently a scaffold — crate boundaries match this design, but no
-> implementation exists yet. The architecture is established first so that
-> implementation proceeds within well-defined subsystem boundaries.
+> **Note:** This document describes the target architecture. The Acquisition
+> subsystem is implemented — see [ACQUISITION.md](docs/ACQUISITION.md) for the
+> current state. Remaining subsystems (Graph, Storage, Analysis, Query,
+> Interfaces) are planned and follow the boundaries established here.
 
 ---
 
@@ -118,13 +118,24 @@ The Knowledge Graph is the architectural center — everything before it discove
 
 ### Acquisition
 
-Responsible for discovering repository facts.
+Responsible for discovering repository structure and producing an
+immutable snapshot.
 
-Examples include
+The implemented scope includes:
 
+- repository discovery orchestration
+- workspace detection
 - filesystem traversal
-- parser integration
-- manifest parsing
+- manifest discovery
+- language detection
+- snapshot construction with typed inventories
+- detector architecture and registries
+- repository identity abstraction
+
+Parsing, fact extraction, and parser integration are planned future work.
+
+The Acquisition boundary artifact is the RepositorySnapshot — an immutable
+structural snapshot of the repository.
 
 See:
 

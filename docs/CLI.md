@@ -4,22 +4,23 @@ This document describes the **kode** command-line interface.
 
 ## Implementation Status
 
-The CLI foundation is complete. The current implementation provides:
+The CLI foundation is complete. The acquisition library crate provides:
 
-- Command parsing and argument validation
-- Help generation (via clap derive)
-- Command dispatch to the correct subcommand handler
-- Placeholder handler execution
+- Repository discovery
+- Workspace detection
+- Filesystem traversal
+- Manifest discovery
+- Language detection
+- RepositorySnapshot construction
 
 The current implementation does **not** yet provide:
 
-- Repository discovery or file scanning
 - Source code parsing or symbol extraction
 - Knowledge graph construction or querying
 - Storage, caching, or incremental updates
 - MCP server logic or LLM integration
 
-All subcommands accept and validate their arguments, then dispatch to a placeholder handler that confirms the command was received. Backend functionality described below documents the **intended purpose** of each command once the repository processing pipeline is implemented.
+All subcommands currently accept and validate their arguments, then dispatch to a placeholder handler. The `scan` subcommand has not yet been wired to the acquisition library. Backend functionality described below documents the **intended purpose** of each command once the repository processing pipeline is wired to the CLI.
 
 ---
 
@@ -69,7 +70,15 @@ Global options are accepted by all subcommands.
 
 ### scan
 
-Discover and index a repository. Once the repository processing pipeline is implemented, this command will scan source files, extract symbols and relationships, and update the local knowledge graph. Currently it validates arguments and dispatches to a placeholder handler.
+Discover and index a repository (placeholder — not yet wired to the acquisition library).
+
+The intended pipeline is:
+
+```
+Repository → RepositoryDiscovery → RepositorySnapshot
+```
+
+Once wired, this will produce an immutable structural snapshot of the repository (workspace layout, files, directories, manifests, and detected languages). Parsing and downstream stages remain future work.
 
 ```sh
 kode scan [PATH] [OPTIONS]

@@ -6,9 +6,33 @@ This document defines the core terminology used throughout **kode**.
 
 A software project rooted in a filesystem directory, containing source code, manifests, configuration, and documentation. The repository is the source of truth — everything in kode originates from it.
 
-## Repository Snapshot
+## RepositorySnapshot
 
-A deterministic capture of the repository's structure at a point in time. Includes file inventory, directory hierarchy, manifest locations, and language inventory. Contains no parsed source code. Produced by Repository Discovery.
+An immutable structural snapshot of the repository. Includes file inventory, directory hierarchy, manifest locations, and language inventory. Contains no parsed source code. Produced by `RepositoryDiscovery`.
+
+## RepositoryDiscovery
+
+The orchestration layer that coordinates workspace detection, filesystem traversal, manifest discovery, language detection, and snapshot construction through composable detector registries.
+
+## Workspace
+
+A description of the repository's project structure — whether it is a single package, a multi-package workspace, or unstructured. Includes the root manifest location and member packages with their manifest paths.
+
+## Manifest
+
+A detected build configuration or package manifest file. Each manifest has a relative path within the repository and a manifest kind indicating its format.
+
+## Inventory
+
+A typed, ordered collection of discovered structural metadata. Inventory types include `FileInventory`, `DirectoryInventory`, `ManifestInventory`, and `LanguageInventory`. Inventories contain no source code or inferred knowledge.
+
+## Detector
+
+A stateless extension point that classifies some aspect of the repository. Detector types include `WorkspaceDetector`, `ManifestDetector`, and `LanguageDetector`. Identical inputs always produce identical outputs.
+
+## Registry
+
+A composite detector that coordinates multiple detector implementations in priority order using first-match semantics. Registry types include WorkspaceRegistry, ManifestRegistry, and LanguageRegistry.
 
 ## Syntax Tree
 

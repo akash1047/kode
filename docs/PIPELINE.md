@@ -33,6 +33,8 @@ Every stage produces an immutable artifact consumed by the next stage.
 
 ---
 
+> **Implementation status:** Stage 1 (Repository Discovery) is implemented. Stages 2–8 document the architectural design and are planned as future work.
+
 ## Design Principles
 
 The pipeline follows the architectural principles defined in [DESIGN.md](../DESIGN.md#architecture-principles): deterministic, incremental, evidence-first, immutable artifacts, and separation of concerns.
@@ -95,8 +97,8 @@ Later stages organize, analyze, and present those facts.
 
 | Stage | Input | Output | Owner |
 |---------|--------|---------|---------|
-| Repository Discovery | Repository | Repository Snapshot | Acquisition |
-| Parsing | Repository Snapshot | Syntax Trees | Acquisition |
+| Repository Discovery | Repository | RepositorySnapshot | Acquisition |
+| Parsing | RepositorySnapshot | Syntax Trees | Acquisition |
 | Fact Extraction | Syntax Trees | Repository Facts | Acquisition |
 | Graph Construction | Repository Facts | Knowledge Graph | Graph |
 | Graph Validation | Knowledge Graph | Validated Graph | Graph |
@@ -120,7 +122,7 @@ flowchart TD
 
 A["Repository"]
 
-B["Repository Snapshot"]
+B["RepositorySnapshot"]
 
 C["Syntax Trees"]
 
@@ -173,15 +175,28 @@ No repository knowledge is inferred.
 
 ### Input
 
-Repository root.
+Repository.
 
 ---
 
 ### Output
 
-Repository Snapshot.
+RepositorySnapshot.
 
-The snapshot contains only repository metadata.
+---
+
+### Orchestration
+
+Repository Discovery is an orchestration layer, not a monolithic algorithm.
+It coordinates five internal steps:
+
+1. **Workspace detection** — identify workspace structure via registered workspace detectors
+2. **Filesystem traversal** — enumerate files and directories respecting `.gitignore`
+3. **Manifest discovery** — locate build configuration and package manifests
+4. **Language detection** — classify files by programming language
+5. **Snapshot construction** — assemble all inventories into an immutable RepositorySnapshot
+
+Each step delegates to a registry of detectors. See [Detector Architecture](ACQUISITION.md#detector-architecture) and [Registries](ACQUISITION.md#registries) in ACQUISITION.md.
 
 ---
 
@@ -189,29 +204,26 @@ The snapshot contains only repository metadata.
 
 Repository Discovery is responsible for:
 
-- locating the repository root
-- detecting workspace boundaries
+- orchestrating workspace detection
 - enumerating repository files
 - respecting `.gitignore`
 - identifying supported languages
 - locating manifests
-- locating build configuration
-- locating documentation
-- collecting filesystem metadata
+- constructing an immutable snapshot
 
 ---
 
 ### Produced Artifact
 
-Repository Snapshot.
+RepositorySnapshot.
 
-Example contents include:
+Contents include:
 
 - repository root
-- workspace members
-- directory hierarchy
+- workspace structure
+- directory inventory
 - file inventory
-- manifest locations
+- manifest inventory
 - language inventory
 
 ---
@@ -240,13 +252,13 @@ Repository discovery may fail when:
 
 Failure terminates the pipeline.
 
-Partial Repository Snapshots are never emitted.
+Partial RepositorySnapshots are never emitted.
 
 ---
 
-## Stage 2 — Parsing
+## Stage 2 — Parsing (Planned)
 
-See [ACQUISITION.md](ACQUISITION.md) for the parser abstraction specification.
+See [ACQUISITION.md](ACQUISITION.md) for the planned parser architecture specification.
 
 ### Purpose
 
@@ -262,7 +274,7 @@ It does not understand architecture.
 
 ### Input
 
-Repository Snapshot.
+RepositorySnapshot.
 
 ---
 
@@ -326,7 +338,7 @@ Parsing may fail due to:
 Parser failures should identify the affected file without corrupting the
 remaining pipeline.
 
-## Stage 3 — Fact Extraction
+## Stage 3 — Fact Extraction (Planned)
 
 See [ACQUISITION.md](ACQUISITION.md) for the Acquisition subsystem specification.
 
@@ -877,7 +889,7 @@ deterministic results.
 
 This document references the following terms defined in [GLOSSARY.md](GLOSSARY.md):
 
-- [Repository Snapshot](GLOSSARY.md#repository-snapshot)
+- [RepositorySnapshot](GLOSSARY.md#repositorysnapshot)
 - [Syntax Tree](GLOSSARY.md#syntax-tree)
 - [Repository Fact](GLOSSARY.md#repository-fact)
 - [Knowledge Graph](GLOSSARY.md#knowledge-graph)
@@ -945,7 +957,7 @@ The pipeline is intentionally extensible.
 
 Supported extension points include:
 
-- repository discovery
+- **repository discovery** — workspace detectors, manifest detectors, and language detectors extend Stage 1 without modifying the orchestration layer
 - language parsers
 - manifest parsers
 - fact extractors
@@ -957,6 +969,15 @@ Supported extension points include:
 
 Extensions should integrate with existing stages rather than introducing new
 processing paths.
+
+Within Stage 1 specifically, new ecosystems are supported by implementing
+detector traits and registering them with the corresponding registries:
+
+- **WorkspaceDetector** — add support for new workspace layouts
+- **ManifestDetector** — add support for new package manifest formats
+- **LanguageDetector** — add support for additional programming languages
+
+No changes to `RepositoryDiscovery` or the snapshot model are required.
 
 ---
 

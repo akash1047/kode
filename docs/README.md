@@ -2,10 +2,10 @@
 
 This index describes every document in the **kode** documentation set.
 
-Architecture documents describe the intended system. They are written
-before implementation to guide development. The repository structure
-mirrors the architecture from the beginning, even while all crates remain
-placeholder scaffolding.
+Architecture documents describe the intended system. The Acquisition
+subsystem is implemented — see [ACQUISITION.md](ACQUISITION.md) for the
+current state. Remaining subsystems are planned and follow the boundaries
+established here.
 
 Contributors should read the architecture documents to understand the
 design intent, then refer to the contributor documents for workspace
@@ -56,7 +56,7 @@ MCP
 | [DESIGN.md](../DESIGN.md) | System design, architectural principles, and invariants |
 | [ARCHITECTURE.md](ARCHITECTURE.md) | High-level architecture and subsystem interaction |
 | [PIPELINE.md](PIPELINE.md) | Repository processing pipeline — from source code to structured knowledge |
-| [ACQUISITION.md](ACQUISITION.md) | Repository discovery, parsing, fact extraction, and parser abstraction |
+| [ACQUISITION.md](ACQUISITION.md) | Acquisition subsystem — repository discovery, snapshot construction, detector architecture (parsing and fact extraction planned) |
 | [KNOWLEDGE_GRAPH.md](KNOWLEDGE_GRAPH.md) | Knowledge Graph specification — nodes, relationships, and evidence |
 | [STORAGE.md](STORAGE.md) | Persistence, caching, and incremental updates |
 | [QUERY_ENGINE.md](QUERY_ENGINE.md) | Query execution — transforming knowledge into evidence-backed answers |

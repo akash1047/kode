@@ -1,6 +1,6 @@
 # Acquisition
 
-This document describes the **Acquisition** subsystem, responsible for discovering repository facts and transforming source code into language-independent repository knowledge.
+This document describes the **Acquisition** subsystem, responsible for discovering repository structure and producing an immutable snapshot of its filesystem layout. Parsing and fact extraction are planned but not yet implemented.
 
 Acquisition is the first stage of repository understanding. It operates before any graph construction, analysis, or querying occurs.
 
@@ -16,9 +16,9 @@ See [GLOSSARY.md](GLOSSARY.md) for definitions of all core terms.
 
 Acquisition exists to answer one question:
 
-> Given a repository, what facts can be deterministically extracted from its source code?
+> Given a repository, what structural facts can be deterministically discovered from its filesystem?
 
-Acquisition transforms raw source code into structured, language-independent repository facts that the Knowledge Graph can consume. It never interprets architecture, infers relationships, or constructs graph elements.
+Acquisition transforms a raw repository into a structured, immutable snapshot of its workspace layout, files, manifests, and languages. It never parses source code, infers relationships, or constructs graph elements.
 
 ---
 
@@ -53,18 +53,20 @@ Acquisition is the only subsystem that directly touches the repository filesyste
 Acquisition is responsible for:
 
 - repository discovery
-- workspace discovery
+- workspace detection
 - filesystem traversal
-- language detection
-- parser selection
 - manifest discovery
-- source file parsing
-- syntax tree generation
-- fact extraction
-- evidence attachment
+- language detection
+- snapshot construction
+- deterministic execution
+- read-only filesystem access
 
 Acquisition is **not** responsible for:
 
+- source code parsing
+- syntax tree generation
+- fact extraction
+- evidence attachment
 - graph construction
 - graph validation
 - persistence
@@ -77,7 +79,7 @@ Acquisition is **not** responsible for:
 
 ## Processing Stages
 
-Acquisition operates as a three-stage pipeline.
+Acquisition operates as a multi-stage pipeline. Only Stage 1 is currently implemented.
 
 ```mermaid
 flowchart LR
@@ -88,56 +90,156 @@ flowchart LR
 
     --> RepositorySnapshot
 
-    --> Parsing
+    --> ParsingPlanned["Parsing\n(Planned)"]
 
-    --> SyntaxTrees
+    --> SyntaxTreesPlanned["Syntax Trees\n(Planned)"]
 
-    --> FactExtraction
+    --> FactExtractionPlanned["Fact Extraction\n(Planned)"]
 
-    --> RepositoryFacts
+    --> RepositoryFactsPlanned["Repository Facts\n(Planned)"]
 ```
 
 ### Stage 1 — Repository Discovery
 
 **Purpose:** Produce a deterministic snapshot of the repository structure.
 
-**Input:** Repository root.
+**Input:** Repository.
 
-**Output:** Repository Snapshot.
+**Output:** RepositorySnapshot.
 
-Repository Discovery is responsible for:
+Repository Discovery is an orchestration layer. It coordinates workspace detection, filesystem traversal, manifest discovery, language detection, and snapshot construction through composable detector registries.
 
-- locating the repository root
-- detecting workspace boundaries
-- enumerating repository files
-- respecting `.gitignore`
-- identifying supported languages
-- locating manifests
-- locating build configuration
-- locating documentation
-- collecting filesystem metadata
+---
 
-The snapshot contains only structural metadata. No source code is parsed. No repository knowledge is inferred.
+#### Repository Model
 
-### Stage 2 — Parsing
+Repository represents a filesystem boundary. Every repository is defined by a canonical root path that exists and is a directory.
+
+Responsibilities:
+
+- validate and canonicalize the repository root
+- carry an optional identity assigned externally by a RepositoryIdentityService
+- provide the root path for all downstream discovery operations
+
+Repository identity is external to discovery. Discovery does not generate, assign, or manage persistent identities.
+
+---
+
+#### Repository Identity
+
+RepositoryIdentityService is a service abstraction for generating repository identities:
+
+```
+RepositoryIdentityService
+    generate_id(root) -> RepositoryId
+```
+
+Key properties:
+
+- identity is generated externally and assigned to the Repository before discovery
+- discovery never generates or modifies identities
+- RepositoryId is an opaque identifier with no structural semantics
+- the identity mechanism is replaceable without changing discovery
+
+This separation keeps discovery focused on structural facts rather than identity management.
+
+---
+
+#### Discovery Orchestration
+
+`RepositoryDiscovery` coordinates the following sequence:
+
+1. **Workspace detection** — identify workspace structure via WorkspaceRegistry
+2. **Filesystem traversal** — enumerate files and directories respecting `.gitignore`
+3. **Manifest discovery** — identify build configuration and package manifests
+4. **Language detection** — classify files by programming language
+5. **Snapshot construction** — assemble all inventories into an immutable RepositorySnapshot
+
+`RepositoryDiscovery` does not implement any of these steps directly. Each step delegates to a registry that composes multiple detectors.
+
+---
+
+#### Workspace Detection
+
+Workspace detection identifies the workspace layout of a repository.
+
+A Workspace describes:
+
+- whether the repository is a single package, a multi-package workspace, or unstructured
+- the root manifest location
+- member packages and their manifest paths
+
+Workspace detection is the first step because it determines which directories are relevant for traversal and which manifests to expect.
+
+---
+
+#### Filesystem Traversal
+
+Filesystem traversal enumerates the repository directory tree.
+
+Traversal:
+
+- respects `.gitignore` rules and hidden-file conventions
+- collects every file and directory relative to the repository root
+- captures filesystem metadata for each file
+- sorts entries deterministically
+
+Traversal is filesystem-only. No file contents are read. No source code is parsed.
+
+---
+
+#### Manifest Discovery
+
+Manifest discovery locates build configuration and package manifests.
+
+Manifests are identified in two ways:
+
+1. From the workspace structure — manifests declared by the workspace detector
+2. From discovered files — additional manifests found during traversal
+
+Each candidate filename is classified by the ManifestRegistry, which delegates to registered ManifestDetector implementations.
+
+A Manifest carries:
+
+- relative path within the repository
+- manifest kind
+
+---
+
+#### Language Detection
+
+Language detection classifies each discovered file by programming language.
+
+Classification is based on the file path. Each file is evaluated by the LanguageRegistry, which delegates to registered LanguageDetector implementations.
+
+Language is an enumerated set of known languages. Unrecognized files are not assigned a language.
+
+---
+
+#### Snapshot Construction
+
+Snapshot construction assembles all collected data into a RepositorySnapshot.
+
+The builder validates that:
+
+- a Repository is present
+- a Workspace is present
+
+If language inventory is not explicitly provided, it is derived from the file inventory.
+
+---
+
+### Stage 2 — Parsing (Planned)
 
 **Purpose:** Transform source files into language-specific syntax trees.
 
-**Input:** Repository Snapshot.
+**Input:** RepositorySnapshot.
 
 **Output:** Syntax Trees.
 
-Parsing is responsible for:
+Parsing is planned but not yet implemented. See the Planned Parser Architecture section for the architectural design.
 
-- selecting the correct parser for each file
-- parsing source files
-- reporting syntax errors
-- preserving source locations
-- exposing language-specific syntax
-
-See [Parser Abstraction](#parser-abstraction) below for the parser architecture.
-
-### Stage 3 — Fact Extraction
+### Stage 3 — Fact Extraction (Planned)
 
 **Purpose:** Transform language-specific syntax trees into language-independent repository facts.
 
@@ -145,26 +247,243 @@ See [Parser Abstraction](#parser-abstraction) below for the parser architecture.
 
 **Output:** Repository Facts.
 
-Fact Extraction is responsible for:
-
-- identifying repository entities
-- extracting symbols
-- extracting declarations
-- extracting definitions
-- extracting imports
-- extracting exports
-- extracting package information
-- extracting manifests
-- preserving source locations
-- attaching evidence
-
-At the end of this stage, all extracted information has a common representation regardless of programming language.
+Fact Extraction is planned but not yet implemented.
 
 ---
 
-## Parser Abstraction
+## RepositorySnapshot
 
-### Parser Interface
+`RepositorySnapshot` is an immutable structural snapshot of the repository — the complete output of Stage 1.
+
+Key properties:
+
+- **Immutable** — once constructed, the snapshot never changes
+- **Deterministic** — identical repository contents always produce identical snapshots
+- **Structural only** — contains filesystem metadata, not source code
+- **Self-contained** — carries all discovered inventories
+
+Consumers:
+
+- Stage 2 Parsing (planned) — determines which files to parse
+- CLI reporting — provides structural overview
+- Downstream subsystems — establish the Acquisition boundary artifact
+
+### Contents
+
+| Component | Description |
+|-----------|-------------|
+| Repository | The canonical repository reference |
+| Workspace | Workspace structure and members |
+| `FileInventory` | All discovered files with metadata |
+| `DirectoryInventory` | All discovered directories |
+| `ManifestInventory` | Identified build manifests |
+| `LanguageInventory` | Detected programming languages |
+
+### FileInventory
+
+`FileInventory` is an ordered collection of all discovered files.
+
+Each file entry carries:
+
+- relative path
+- file size
+- modification time
+- detected language (if recognized)
+
+`FileInventory` is the primary input for downstream processing stages.
+
+### DirectoryInventory
+
+`DirectoryInventory` is an ordered collection of all discovered directories.
+
+### ManifestInventory
+
+`ManifestInventory` is an ordered collection of discovered manifests.
+
+Each manifest carries:
+
+- relative path
+- manifest kind
+
+`ManifestInventory` supports path-based lookup to avoid duplicate registrations.
+
+### LanguageInventory
+
+`LanguageInventory` is a set of unique programming languages detected in the repository.
+
+It is derived from `FileInventory` by collecting the distinct language assignments across all files.
+
+---
+
+## Detector Architecture
+
+Detectors are the extension mechanism for Repository Discovery. Each detector type has a single responsibility and a deterministic contract.
+
+All detectors are stateless: identical inputs always produce identical outputs.
+
+### WorkspaceDetector
+
+**Responsibility:** Identify workspace structure from a repository root.
+
+**Contract:**
+
+```
+detect(root) -> Workspace | Error
+```
+
+**Behavior:**
+
+- examines the repository root for workspace markers
+- returns a Workspace describing the workspace kind and member layout
+- returns a non-workspace result if no workspace is detected
+- may error on malformed configuration
+
+### ManifestDetector
+
+**Responsibility:** Classify a filename as a known manifest type.
+
+**Contract:**
+
+```
+detect(filename) -> ManifestKind | None
+```
+
+**Behavior:**
+
+- examines only the filename, not the file contents or path
+- returns a ManifestKind if the filename matches a known manifest pattern
+- returns None for unrecognized filenames
+- is purely pattern-based with no filesystem access
+
+### LanguageDetector
+
+**Responsibility:** Classify a file path as a known programming language.
+
+**Contract:**
+
+```
+detect(path) -> Language | None
+```
+
+**Behavior:**
+
+- examines the file path, typically the file extension
+- returns a Language if the path matches a known language pattern
+- returns None for unrecognized paths
+- is purely pattern-based with no filesystem access
+
+---
+
+## Registries
+
+Registries compose multiple detectors into a single detection pipeline. Each registry type implements the same contract as its corresponding detector trait with first-match semantics.
+
+### WorkspaceRegistry
+
+**Purpose:** Coordinate multiple WorkspaceDetector implementations.
+
+**Behavior:**
+
+- detectors are registered in priority order
+- on detection, each detector is invoked in registration order
+- the first non-None Workspace result is returned
+- if no detector matches, a non-workspace result is returned
+- errors propagate immediately
+
+**Default configuration:** includes the CargoWorkspaceDetector.
+
+### ManifestRegistry
+
+**Purpose:** Coordinate multiple ManifestDetector implementations.
+
+**Behavior:**
+
+- detectors are registered in priority order
+- on detection, each detector is invoked in registration order
+- the first Some(ManifestKind) result is returned
+- if no detector matches, None is returned
+
+**Default configuration:** includes the CargoManifestDetector.
+
+### LanguageRegistry
+
+**Purpose:** Coordinate multiple LanguageDetector implementations.
+
+**Behavior:**
+
+- detectors are registered in priority order
+- on detection, each detector is invoked in registration order
+- the first Some(Language) result is returned
+- if no detector matches, None is returned
+
+**Default configuration:** includes the ExtensionLanguageDetector.
+
+### Extension Model
+
+Adding support for a new ecosystem or language requires:
+
+1. implementing the appropriate detector trait
+2. registering the detector with the corresponding registry
+3. optionally configuring the registry with custom ordering
+
+No changes are required to `RepositoryDiscovery` or the snapshot model.
+
+---
+
+## Default Implementations
+
+The following detectors are provided as defaults. They are not architectural requirements — future ecosystems will add their own detectors following the same patterns.
+
+### CargoWorkspaceDetector
+
+Detects Rust Cargo workspaces and single-package repositories.
+
+- reads `Cargo.toml` from the repository root
+- identifies workspace members (literal paths and glob patterns)
+- returns CargoWorkspace, SinglePackage, or no workspace
+
+### CargoManifestDetector
+
+Recognizes `Cargo.toml` as a Cargo manifest.
+
+- matches the filename `Cargo.toml`
+
+### ExtensionLanguageDetector
+
+Classifies files by file extension.
+
+- maps well-known extensions to Language values
+- supports Rust, Python, Markdown, Toml, JSON, YAML, JavaScript, TypeScript, Go, Java, Ruby, Shell, CSS, HTML, SQL, Protobuf
+- returns None for unknown extensions
+
+---
+
+## Discovery Sequence
+
+```
+Repository
+    │
+    ▼
+RepositoryDiscovery
+    │
+    ├── WorkspaceRegistry ────────► Workspace
+    │
+    ├── Filesystem Traversal ─────► Files + Directories
+    │
+    ├── ManifestRegistry ─────────► Manifests
+    │
+    ├── LanguageRegistry ─────────► Language Inventory
+    │
+    └── SnapshotBuilder ──────────► RepositorySnapshot
+```
+
+`RepositoryDiscovery` orchestrates detection through registries. Each registry delegates to registered detectors. The SnapshotBuilder validates and assembles the final artifact.
+
+---
+
+## Planned Parser Architecture
+
+### Planned Parser Interface
 
 Every language parser implements a common interface:
 
@@ -210,24 +529,24 @@ Fact Extraction normalizes language-specific syntax trees into a common model. D
 
 ## Produced Artifacts
 
-### Repository Snapshot
+### RepositorySnapshot
 
-The snapshot captures repository structure without parsing source code.
+The current artifact produced by Stage 1.
 
 Contents include:
 
 - repository root
-- workspace members
-- directory hierarchy
+- workspace structure
+- directory inventory
 - file inventory
-- manifest locations
+- manifest inventory
 - language inventory
 
-### Syntax Trees
+### Syntax Trees (Planned)
 
 One syntax tree per source file. Language-specific, lossless, location-tracked.
 
-### Repository Facts
+### Repository Facts (Planned)
 
 Language-independent units of knowledge.
 

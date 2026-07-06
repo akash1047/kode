@@ -44,14 +44,19 @@ Dependencies flow downward. No circular dependencies are permitted.
 **Path:** `crates/acquisition/`
 
 **Current State**
-- Placeholder crate.
+- Repository domain model (canonical path, optional identity)
+- `RepositoryDiscovery` orchestration (workspace → traversal → manifests → languages → snapshot)
+- RepositorySnapshot with inventory types (File, Directory, Manifest, Language)
+- Detector traits (WorkspaceDetector, ManifestDetector, LanguageDetector)
+- Detector registries with first-match semantics
+- Default detectors for Cargo workspaces, Cargo manifests, and extension-based language detection
+- SnapshotBuilder for validated snapshot construction
+- Workspace and Manifest domain models
 
 **Planned Responsibility**
-- Repository discovery
-- Filesystem traversal
-- Parser integration
-- Manifest parsing
-- Language detection
+- Source code parsing (planned)
+- Fact extraction (planned)
+- Parser integration (planned)
 
 ---
 

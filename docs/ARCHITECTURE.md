@@ -116,19 +116,25 @@ flowchart LR
 
 ## Acquisition Layer
 
-Responsible for discovering repository facts.
+Responsible for discovering repository structure and producing an
+immutable snapshot.
 
 Responsibilities include
 
 - repository discovery
+- workspace detection
 - filesystem traversal
-- parser integration
-- manifest parsing
+- manifest discovery
 - language detection
+- snapshot construction
+
+The Acquisition boundary artifact is the **RepositorySnapshot** — an
+immutable structural snapshot of the repository. Parsing and fact
+extraction are planned but not yet implemented.
 
 Output:
 
-Repository facts.
+RepositorySnapshot (current). Repository facts (planned).
 
 See:
 
@@ -280,16 +286,21 @@ Repository processing follows a deterministic lifecycle.
 sequenceDiagram
 
 participant Repo as Repository
-participant Parser
+participant Acquisition
+participant Snapshot as "RepositorySnapshot"
 participant Graph as "Knowledge Graph"
 participant Storage
 participant Analysis
 participant Query as "Query Engine"
 participant LLM
 
-Repo->>Parser: Parse repository
+Repo->>Acquisition: Discover structure
 
-Parser->>Graph: Build graph
+Acquisition->>Snapshot: Produce
+
+Note over Snapshot: Acquisition boundary artifact
+
+Snapshot->>Graph: Build graph (planned)
 
 Graph->>Storage: Persist
 
