@@ -15,7 +15,7 @@
 //! - [`ParseOutcome`] — four-way discrimination (Success, Recovered, Skipped, Failed)
 
 mod rust;
-mod ts;
+pub(crate) mod ts;
 
 mod diagnostic;
 mod error;
@@ -24,7 +24,7 @@ mod parser;
 mod registry;
 mod result;
 mod source;
-mod syntax;
+pub(crate) mod syntax;
 
 pub use diagnostic::{Diagnostic, Severity};
 pub use error::Error;

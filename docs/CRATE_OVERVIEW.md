@@ -54,8 +54,7 @@ Dependencies flow downward. No circular dependencies are permitted.
 - Workspace and Manifest domain models
 
 **Planned Responsibility**
-- Fact extraction (planned)
-- Parser integration (planned; parsing lives in analysis crate during initial development)
+- (none — downstream processing is handled by kode-analysis)
 
 ---
 
@@ -95,6 +94,7 @@ Dependencies flow downward. No circular dependencies are permitted.
 
 **Current State**
 - Parsing subsystem (Pipeline Stage 2) — transforms `RepositorySnapshot` and `SourceInventory` into `SyntaxTreeInventory`
+- Fact Extraction subsystem (Pipeline Stage 3) — transforms `SyntaxTreeInventory` into `RepositoryFacts`
 - `Parser` trait for language-specific parser implementations (no `can_parse()` — selection is language-keyed)
 - `ParserRegistry` with language-keyed dispatch (separate dispatcher, not a parser implementation)
 - `RustParser` — Tree-sitter-backed Rust parser
@@ -106,6 +106,15 @@ Dependencies flow downward. No circular dependencies are permitted.
 - Error taxonomy covering parser initialization and unsupported languages
 - Tree-sitter fully encapsulated behind `pub(crate)` adapter — no Tree-sitter types in public API
 - Expanded parser metadata (`grammar_version`, `backend_id`)
+- `Extractor` trait for language-specific extractors
+- `ExtractorRegistry` with language-keyed dispatch
+- `RustExtractor` — Tree-sitter-backed Rust extractor for functions, structs, enums, traits, impls, type aliases, constants, statics, imports, and modules
+- `ExtractionOrchestrator` — pure transformation over immutable inputs (no filesystem I/O)
+- `RepositoryFacts` — immutable domain artifact containing all extracted entities
+- `EntityId` — stable, deterministic hash-based entity identifiers
+- `Evidence` — source location evidence attached to every entity
+- Entity types: `ModuleFact`, `FunctionFact`, `StructFact`, `EnumFact`, `TraitFact`, `ImplBlockFact`, `TypeAliasFact`, `ConstantFact`, `StaticFact`, `ImportFact`
+- Extraction diagnostics model (`ExtractionDiagnostic`, `Severity`)
 
 **Planned Responsibility**
 - Dependency analysis

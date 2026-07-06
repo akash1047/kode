@@ -33,7 +33,7 @@ Every stage produces an immutable artifact consumed by the next stage.
 
 ---
 
-> **Implementation status:** Stage 1 (Repository Discovery) and Stage 2 (Parsing) are implemented. Stages 3–8 document the architectural design and are planned as future work.
+> **Implementation status:** Stage 1 (Repository Discovery), Stage 2 (Parsing), and Stage 3 (Fact Extraction) are implemented. Stages 4–8 document the architectural design and are planned as future work.
 
 ## Design Principles
 
@@ -99,7 +99,7 @@ Later stages organize, analyze, and present those facts.
 |---------|--------|---------|---------|
 | Repository Discovery | Repository | RepositorySnapshot | Acquisition |
 | Parsing | RepositorySnapshot + SourceInventory | Syntax Trees | Analysis |
-| Fact Extraction | Syntax Trees | Repository Facts | Acquisition |
+| Fact Extraction | Syntax Trees | Repository Facts | Analysis |
 | Graph Construction | Repository Facts | Knowledge Graph | Graph |
 | Graph Validation | Knowledge Graph | Validated Graph | Graph |
 | Persistence | Validated Graph | Graph Revision | Storage |
@@ -364,9 +364,9 @@ Parser failures identify the affected file without corrupting the remaining pipe
 
 ---
 
-## Stage 3 — Fact Extraction (Planned)
+## Stage 3 — Fact Extraction (Implemented)
 
-See [ACQUISITION.md](ACQUISITION.md) for the Acquisition subsystem specification.
+The Fact Extraction subsystem lives in the `kode-analysis` crate within the `extraction` module. See [ANALYSIS.md](ANALYSIS.md) for the full specification.
 
 ### Purpose
 
@@ -388,7 +388,7 @@ Only objective repository facts are produced.
 
 ### Input
 
-Syntax Trees.
+Syntax Tree Inventory.
 
 ---
 
@@ -397,6 +397,17 @@ Syntax Trees.
 Repository Facts.
 
 ---
+
+### Implementation
+
+Fact Extraction is implemented as a pure transformation pipeline:
+
+1. **ExtractorRegistry** — ordered collection of language-specific extractors with language-keyed dispatch
+2. **ExtractionOrchestrator** — iterates trees from `SyntaxTreeInventory`, dispatches to extractors, merges results
+3. **RustExtractor** — Tree-sitter-backed extractor for Rust source files (initial implementation)
+4. **RepositoryFacts** — immutable domain artifact containing all extracted entities
+
+The pipeline iterates parsed syntax trees and performs extraction as a pure transformation over immutable inputs. No filesystem I/O occurs during extraction.
 
 ### Responsibilities
 
@@ -408,10 +419,9 @@ Fact Extraction is responsible for:
 - extracting definitions
 - extracting imports
 - extracting exports
-- extracting package information
-- extracting manifests
 - preserving source locations
 - attaching evidence
+- producing stable entity identifiers
 
 The extractor normalizes language-specific constructs into a common model.
 
@@ -421,23 +431,22 @@ The extractor normalizes language-specific constructs into a common model.
 
 Repository Facts.
 
-Examples include:
+Currently extracted entities include:
 
-- repository
-- workspace
-- package
-- module
-- file
-- function
-- method
-- struct
-- enum
-- trait
-- interface
-- class
-- variable
-- constant
-- macro
+- modules
+- functions (top-level and methods)
+- structs (with fields)
+- enums (with variants)
+- traits (with methods, associated types, associated constants)
+- impl blocks (with methods, target type, implemented trait)
+- type aliases
+- constants
+- statics
+- imports
+
+Every entity carries:
+- A stable `EntityId` (deterministic hash-based identifier)
+- `Evidence` (source file, node kind, byte range, line/column, language)
 
 Repository Facts remain language independent.
 
@@ -464,7 +473,7 @@ Fact Extraction may fail when:
 - mandatory metadata is missing
 - unsupported syntax is encountered
 
-Extraction failures terminate processing for the affected repository revision.
+Extraction failures produce diagnostics but do not abort processing for unaffected trees.
 
 ---
 
@@ -936,7 +945,7 @@ Each stage belongs to exactly one architectural subsystem.
 |---------------|------------------|
 | Repository Discovery | Acquisition (see [ACQUISITION.md](ACQUISITION.md)) |
 | Parsing | Analysis (see [ANALYSIS.md](ANALYSIS.md)) |
-| Fact Extraction | Acquisition (see [ACQUISITION.md](ACQUISITION.md)) |
+| Fact Extraction | Analysis (see [ANALYSIS.md](ANALYSIS.md)) |
 | Graph Construction | Knowledge Graph |
 | Graph Validation | Knowledge Graph |
 | Persistence | Storage |

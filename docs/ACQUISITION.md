@@ -1,6 +1,6 @@
 # Acquisition
 
-This document describes the **Acquisition** subsystem, responsible for discovering repository structure and producing an immutable snapshot of its filesystem layout. Parsing and fact extraction are planned but not yet implemented.
+This document describes the **Acquisition** subsystem, responsible for discovering repository structure and producing an immutable snapshot of its filesystem layout. Downstream processing (Parsing, Fact Extraction) is owned by the Analysis subsystem — see [ANALYSIS.md](ANALYSIS.md).
 
 Acquisition is the first stage of repository understanding. It operates before any graph construction, analysis, or querying occurs.
 
@@ -79,7 +79,7 @@ Acquisition is **not** responsible for:
 
 ## Processing Stages
 
-Acquisition operates as a multi-stage pipeline. Only Stage 1 is currently implemented.
+Acquisition consists of a single stage — Repository Discovery — which produces the Acquisition boundary artifact. Downstream stages (Parsing, Fact Extraction) are owned by the Analysis subsystem.
 
 ```mermaid
 flowchart LR
@@ -89,14 +89,6 @@ flowchart LR
     --> RepositoryDiscovery
 
     --> RepositorySnapshot
-
-    --> ParsingPlanned["Parsing\n(Planned)"]
-
-    --> SyntaxTreesPlanned["Syntax Trees\n(Planned)"]
-
-    --> FactExtractionPlanned["Fact Extraction\n(Planned)"]
-
-    --> RepositoryFactsPlanned["Repository Facts\n(Planned)"]
 ```
 
 ### Stage 1 — Repository Discovery
@@ -229,25 +221,7 @@ If language inventory is not explicitly provided, it is derived from the file in
 
 ---
 
-### Stage 2 — Parsing (Planned)
-
-**Purpose:** Transform source files into language-specific syntax trees.
-
-**Input:** RepositorySnapshot.
-
-**Output:** Syntax Trees.
-
-Parsing is planned but not yet implemented. See the Planned Parser Architecture section for the architectural design.
-
-### Stage 3 — Fact Extraction (Planned)
-
-**Purpose:** Transform language-specific syntax trees into language-independent repository facts.
-
-**Input:** Syntax Trees.
-
-**Output:** Repository Facts.
-
-Fact Extraction is planned but not yet implemented.
+Downstream stages (Parsing, Fact Extraction) are owned by the Analysis subsystem — see [ANALYSIS.md](ANALYSIS.md).
 
 ---
 
@@ -264,7 +238,7 @@ Key properties:
 
 Consumers:
 
-- Stage 2 Parsing (planned) — determines which files to parse
+- Analysis Parsing (Stage 2) — determines which files to parse
 - CLI reporting — provides structural overview
 - Downstream subsystems — establish the Acquisition boundary artifact
 
@@ -481,49 +455,7 @@ RepositoryDiscovery
 
 ---
 
-## Planned Parser Architecture
-
-### Planned Parser Interface
-
-Every language parser implements a common interface:
-
-```text
-parse(SourceFile) -> SyntaxTree
-```
-
-The parser interface guarantees:
-
-- deterministic output for identical input
-- lossless syntactic preservation
-- source location tracking
-- error reporting without halting
-
-### Language Plugins
-
-Each supported language is implemented as a parser plugin. Plugins are registered and selected based on file extension or manifest metadata.
-
-Adding a new language requires:
-
-1. implementing the parser interface for the language
-2. registering the parser with file extension or content detection
-3. providing syntax tree types for the language
-
-No changes are required elsewhere in the pipeline.
-
-### Syntax Tree Generation
-
-Syntax trees are language-specific. Each tree:
-
-- represents one source file
-- preserves the complete syntactic structure
-- includes source locations for every node
-- is lossless (no information discarded)
-
-Syntax trees are consumed exclusively by Fact Extraction. No other subsystem accesses syntax trees directly.
-
-### Language Independence
-
-Fact Extraction normalizes language-specific syntax trees into a common model. Downstream subsystems (Knowledge Graph, Analysis, Query Engine) operate entirely in language-independent terms.
+Downstream stages (Parsing, Fact Extraction) are implemented in the Analysis subsystem — see [ANALYSIS.md](ANALYSIS.md).
 
 ---
 
@@ -542,33 +474,9 @@ Contents include:
 - manifest inventory
 - language inventory
 
-### Syntax Trees (Planned)
+Downstream artifacts are produced by the Analysis subsystem.
 
-One syntax tree per source file. Language-specific, lossless, location-tracked.
-
-### Repository Facts (Planned)
-
-Language-independent units of knowledge.
-
-Examples include:
-
-- repository
-- workspace
-- package
-- module
-- file
-- function
-- method
-- struct
-- enum
-- trait
-- interface
-- class
-- variable
-- constant
-- macro
-
-Every fact carries evidence (source location).
+See [ANALYSIS.md](ANALYSIS.md) for Syntax Tree Inventory and Repository Facts documentation.
 
 ---
 

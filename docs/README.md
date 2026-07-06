@@ -2,8 +2,9 @@
 
 This index describes every document in the **kode** documentation set.
 
-Architecture documents describe the intended system. The Acquisition
-subsystem is implemented — see [ACQUISITION.md](ACQUISITION.md) for the
+Architecture documents describe the intended system. The Acquisition,
+Parsing, and Fact Extraction subsystems are implemented — see
+[ACQUISITION.md](ACQUISITION.md) and [ANALYSIS.md](ANALYSIS.md) for the
 current state. Remaining subsystems are planned and follow the boundaries
 established here.
 
@@ -34,11 +35,11 @@ PIPELINE
   ↓
 ACQUISITION
   ↓
+ANALYSIS
+  ↓
 KNOWLEDGE_GRAPH
   ↓
 STORAGE
-  ↓
-ANALYSIS
   ↓
 QUERY_ENGINE
   ↓
@@ -56,11 +57,11 @@ MCP
 | [DESIGN.md](../DESIGN.md) | System design, architectural principles, and invariants |
 | [ARCHITECTURE.md](ARCHITECTURE.md) | High-level architecture and subsystem interaction |
 | [PIPELINE.md](PIPELINE.md) | Repository processing pipeline — from source code to structured knowledge |
-| [ACQUISITION.md](ACQUISITION.md) | Acquisition subsystem — repository discovery, snapshot construction, detector architecture (parsing and fact extraction planned) |
+| [ACQUISITION.md](ACQUISITION.md) | Acquisition subsystem — repository discovery, snapshot construction, detector architecture |
 | [KNOWLEDGE_GRAPH.md](KNOWLEDGE_GRAPH.md) | Knowledge Graph specification — nodes, relationships, and evidence |
 | [STORAGE.md](STORAGE.md) | Persistence, caching, and incremental updates |
 | [QUERY_ENGINE.md](QUERY_ENGINE.md) | Query execution — transforming knowledge into evidence-backed answers |
-| [ANALYSIS.md](ANALYSIS.md) | Analysis engine — derived facts and graph algorithms |
+| [ANALYSIS.md](ANALYSIS.md) | Analysis engine — Parsing (Stage 2), Fact Extraction (Stage 3), and future graph algorithms |
 | [EVIDENCE_MODEL.md](EVIDENCE_MODEL.md) | Evidence guarantees and citation model |
 | [MCP.md](MCP.md) | Model Context Protocol integration |
 

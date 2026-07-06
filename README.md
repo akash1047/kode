@@ -15,7 +15,9 @@ kode builds a deterministic understanding of your repository and answers questio
 
 ## Current Status
 
-The **Acquisition** subsystem is implemented. It discovers repository structure and produces an immutable structural snapshot of the repository:
+The **Acquisition**, **Parsing**, and **Fact Extraction** subsystems are implemented.
+
+Acquisition discovers repository structure and produces an immutable structural snapshot:
 
 - Repository discovery orchestration
 - Workspace detection
@@ -26,21 +28,36 @@ The **Acquisition** subsystem is implemented. It discovers repository structure 
 - Detector architecture with registries (WorkspaceDetector, ManifestDetector, LanguageDetector)
 - Default detectors for Cargo workspaces, Cargo manifests, and extension-based language detection
 
+Parsing transforms source files into language-specific syntax trees:
+
+- `Parser` trait for language-specific parsers
+- `ParserRegistry` with language-keyed dispatch
+- `RustParser` — Tree-sitter-backed Rust parser
+- `ParsingOrchestrator` — pure transformation over immutable inputs
+- `SyntaxTree` and `SyntaxTreeInventory` — immutable domain artifacts
+
+Fact Extraction transforms syntax trees into language-independent repository facts:
+
+- `Extractor` trait for language-specific extractors
+- `ExtractorRegistry` with language-keyed dispatch
+- `RustExtractor` — Tree-sitter-backed Rust extractor
+- `ExtractionOrchestrator` — pure transformation over immutable inputs
+- `RepositoryFacts` — immutable domain artifact with entities and evidence
+- `EntityId` — stable, deterministic hash-based entity identifiers
+- `Evidence` — source location evidence attached to every entity
+
 The CLI command interface (argument parsing, help generation, command dispatch) is also implemented. The `scan` subcommand has not yet been wired to the acquisition library — all subcommands currently return placeholder messages.
 
 The following capabilities are **planned** and not yet implemented:
 
-- Source code parsing
-- Syntax tree generation
-- Fact extraction
 - Knowledge Graph construction
 - Incremental caching and storage
 - Query execution
-- Analysis engine
+- Analysis engine (graph algorithms)
 - MCP server logic
 - LLM integration
 
-Contributors should read `DESIGN.md`, [ACQUISITION.md](docs/ACQUISITION.md), and the [documentation index](docs/README.md) before starting work.
+Contributors should read `DESIGN.md`, [ACQUISITION.md](docs/ACQUISITION.md), [ANALYSIS.md](docs/ANALYSIS.md), and the [documentation index](docs/README.md) before starting work.
 
 ---
 
@@ -56,7 +73,7 @@ Neither guarantees that an answer reflects the current state of your repository.
 kode takes a different approach.
 
 It parses your project, builds a deterministic **Knowledge Graph** from source code and project metadata, persists it locally for incremental updates, and requires every answer to be verified against the repository before it is returned.
-The Acquisition subsystem — repository discovery, workspace detection, and snapshot construction — is implemented. The Knowledge Graph, parsing, and downstream stages are planned.
+The Acquisition, Parsing, and Fact Extraction subsystems are implemented. The Knowledge Graph and downstream stages are planned.
 
 The Knowledge Graph is an implementation detail—not an AI-generated artifact. It is produced entirely through deterministic parsing and analysis.
 
@@ -74,16 +91,19 @@ The LLM never invents facts. It uses the graph to locate relevant parts of the r
 * **Language detection** — classifies files by programming language via extension mapping
 * **RepositorySnapshot** — immutable structural snapshot of the repository with typed inventories
 * **Detector architecture** — composable, registry-based extension model
+* **Parsing** — language-specific syntax tree generation via tree-sitter
+* **Fact Extraction** — language-independent repository facts with evidence
+* **RepositoryFacts** — immutable domain artifact with EntityId and Evidence
 
 **Planned:**
 
 * **Evidence-backed answers** — every claim includes `path:line` citations
-* **Deterministic Knowledge Graph** — built from source code and project metadata
+* **Deterministic Knowledge Graph** — built from repository facts
 * **Incremental indexing** — only changed files are reparsed
 * **Interactive REPL** — terminal chat with full repository awareness
 * **One-shot queries** — ask a question and exit
 * **MCP server** — expose your repository to any MCP-compatible AI agent
-* **Tree-sitter symbol extraction** — Rust, Python, TypeScript, JavaScript, Go, Java and more
+* **Additional language support** — Python, TypeScript, JavaScript, Go, Java and more
 * **Manifest awareness** — npm, Python, Docker and more
 * **Local-first** — indexes remain on your machine
 
@@ -134,23 +154,29 @@ RepositoryDiscovery
 RepositorySnapshot          ◄── Acquisition boundary (implemented)
      │
      ▼
-Parsing                     ─── Planned
+Parsing                     ─── Implemented (Analysis)
      │
      ▼
-Fact Extraction             ─── Planned
+Syntax Trees
+     │
+     ▼
+Fact Extraction             ─── Implemented (Analysis)
+     │
+     ▼
+RepositoryFacts
      │
      ▼
 Knowledge Graph             ─── Planned
      │
      ├── Storage
      ├── Query Engine
-     ├── Analysis
+     ├── Analysis (graph algorithms)
      └── Interfaces
 ```
 
 The Acquisition boundary produces an **immutable structural snapshot of the repository** containing workspace structure, files, directories, manifests, and language inventories.
 
-Parsing, fact extraction, and Knowledge Graph construction are planned future work — see [ACQUISITION.md](docs/ACQUISITION.md) and [PIPELINE.md](docs/PIPELINE.md).
+Parsing and Fact Extraction are implemented in the Analysis subsystem — see [ANALYSIS.md](docs/ANALYSIS.md) and [PIPELINE.md](docs/PIPELINE.md).
 
 When the full pipeline is implemented, kode will use the graph to efficiently locate relevant code, then read original source files to verify every claim before returning an answer.
 

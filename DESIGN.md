@@ -7,10 +7,12 @@ and the architectural principles that guide the project.
 
 Detailed specifications are documented separately under `docs/`.
 
-> **Note:** This document describes the target architecture. The Acquisition
-> subsystem is implemented — see [ACQUISITION.md](docs/ACQUISITION.md) for the
-> current state. Remaining subsystems (Graph, Storage, Analysis, Query,
-> Interfaces) are planned and follow the boundaries established here.
+> **Note:** This document describes the target architecture. Acquisition,
+> Parsing, and Fact Extraction are implemented — see [ACQUISITION.md](docs/ACQUISITION.md),
+> [ANALYSIS.md](docs/ANALYSIS.md), and [PIPELINE.md](docs/PIPELINE.md) for the
+> current state. Remaining subsystems (Graph, Storage, Query, Interfaces,
+> Analysis graph algorithms) are planned and follow the boundaries established
+> here.
 
 ---
 
@@ -91,7 +93,9 @@ flowchart LR
 
     Repository --> Acquisition
 
-    Acquisition --> KnowledgeGraph["Knowledge Graph"]
+    Acquisition --> Analysis
+
+    Analysis --> KnowledgeGraph["Knowledge Graph"]
 
     KnowledgeGraph --> Storage
     KnowledgeGraph --> Analysis
@@ -132,10 +136,14 @@ The implemented scope includes:
 - detector architecture and registries
 - repository identity abstraction
 
-Parsing, fact extraction, and parser integration are planned future work.
-
 The Acquisition boundary artifact is the RepositorySnapshot — an immutable
-structural snapshot of the repository.
+structural snapshot of the repository. Downstream processing (Parsing, Fact
+Extraction) is owned by the Analysis subsystem.
+
+See:
+
+- docs/ACQUISITION.md
+- docs/PIPELINE.md
 
 See:
 
@@ -196,9 +204,17 @@ See:
 
 ### Analysis
 
-Consumes the graph to derive higher-level information.
+Owns Parsing (Stage 2) and Fact Extraction (Stage 3) in the current
+implementation.
 
-Examples include
+Parsing transforms RepositorySnapshot and SourceInventory into
+SyntaxTreeInventory using language-specific parsers.
+
+Fact Extraction transforms SyntaxTreeInventory into RepositoryFacts
+using language-specific extractors that produce entities with evidence.
+
+Future responsibilities will include consuming the Knowledge Graph to
+derive higher-level information:
 
 - dependency analysis
 - impact analysis

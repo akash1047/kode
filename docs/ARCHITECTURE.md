@@ -61,7 +61,7 @@ These principles are documented fully in DESIGN.md. All subsystems inherit them.
 
 ### Pipeline Ownership Note
 
-The pipeline ownership table in [PIPELINE.md](PIPELINE.md) originally assigned Parsing to Acquisition. During development, Parsing was implemented in the `kode-analysis` crate to avoid introducing a new crate prematurely. This is a deployment decision — if the Parsing subsystem later justifies its own crate, it should be extracted from analysis before public APIs stabilize.
+The pipeline ownership table in [PIPELINE.md](PIPELINE.md) originally assigned Parsing to Acquisition. During development, both Parsing (Stage 2) and Fact Extraction (Stage 3) were implemented in the `kode-analysis` crate. Both stages belong to the Analysis subsystem. If a stage later justifies its own crate, it should be extracted from analysis before public APIs stabilize.
 
 ---
 
@@ -136,6 +136,9 @@ The Acquisition boundary artifact is the **RepositorySnapshot** — an
 immutable structural snapshot of the repository containing file inventory,
 directory hierarchy, manifest locations, and language inventory.
 
+Acquisition ends at RepositorySnapshot. Downstream processing (Parsing,
+Fact Extraction) is handled by the Analysis subsystem.
+
 Output:
 
 RepositorySnapshot.
@@ -193,16 +196,32 @@ Responsible for deriving information from the repository and graph.
 Responsibilities include
 
 - **Parsing (Stage 2)** — transforms `RepositorySnapshot` and `SourceInventory` into `SyntaxTreeInventory` using language-specific parsers with an encapsulated syntax backend
+- **Fact Extraction (Stage 3)** — transforms `SyntaxTreeInventory` into `RepositoryFacts` using language-specific extractors that walk syntax trees and produce entities with evidence
 - dependency analysis (planned)
 - impact analysis (planned)
 - cycle detection (planned)
 - architecture metrics (planned)
 - dead code detection (planned)
 
-The Analysis boundary artifact is the **SyntaxTreeInventory** — an immutable
-collection of parse outcomes for every file in the snapshot.
+The Analysis boundary includes:
+
+```
+RepositorySnapshot
+        ↓
+SourceInventory
+        ↓
+SyntaxTreeInventory
+        ↓
+RepositoryFacts
+```
+
+The Analysis boundary artifacts are the **SyntaxTreeInventory** (Stage 2) and
+**RepositoryFacts** (Stage 3) — immutable collections of parse outcomes and
+extracted entities respectively.
 
 Parsing is the entry point to the Analysis layer and the Stage 2 producer.
+Fact Extraction is the Stage 3 transformation producing the semantic model
+consumed by the Knowledge Graph.
 
 See:
 
