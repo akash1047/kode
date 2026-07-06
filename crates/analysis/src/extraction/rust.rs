@@ -2,11 +2,11 @@ use std::path::Path;
 
 use kode_acquisition::Language;
 
-use crate::parsing::syntax::SyntaxTree;
 use crate::extraction::diagnostic::ExtractionDiagnostic;
 use crate::extraction::extractor::Extractor;
 use crate::extraction::model::*;
 use crate::extraction::result::ExtractionOutcome;
+use crate::parsing::syntax::SyntaxTree;
 
 /// Extractor for Rust source files.
 ///
@@ -75,12 +75,10 @@ fn process_top_level_node(
     diagnostics: &mut Vec<ExtractionDiagnostic>,
 ) {
     match node.kind() {
-        "function_item" => {
-            match extract_function(node, source, file_path, language, None, None) {
-                Ok(f) => entities.push(Entity::Function(f)),
-                Err(d) => diagnostics.push(d),
-            }
-        }
+        "function_item" => match extract_function(node, source, file_path, language, None, None) {
+            Ok(f) => entities.push(Entity::Function(f)),
+            Err(d) => diagnostics.push(d),
+        },
         "struct_item" => match extract_struct(node, source, file_path, language) {
             Ok(s) => entities.push(Entity::Struct(s)),
             Err(d) => diagnostics.push(d),
@@ -109,12 +107,10 @@ fn process_top_level_node(
             Ok(s) => entities.push(Entity::Static(s)),
             Err(d) => diagnostics.push(d),
         },
-        "use_declaration" => {
-            match extract_import(node, source, file_path, language) {
-                Ok(i) => entities.push(Entity::Import(i)),
-                Err(d) => diagnostics.push(d),
-            }
-        }
+        "use_declaration" => match extract_import(node, source, file_path, language) {
+            Ok(i) => entities.push(Entity::Import(i)),
+            Err(d) => diagnostics.push(d),
+        },
         "mod_item" => match extract_module(node, source, file_path, language) {
             Ok(m) => entities.push(Entity::Module(m)),
             Err(d) => diagnostics.push(d),
@@ -326,7 +322,9 @@ fn extract_struct(
     let evidence = evidence_for_node(node, source, file_path, language);
     let id = EntityId::from_location(language, "struct", file_path, name, node.start_byte());
 
-    Ok(StructFact::new(id, name, fields, visibility, generics, evidence))
+    Ok(StructFact::new(
+        id, name, fields, visibility, generics, evidence,
+    ))
 }
 
 fn extract_struct_field(
@@ -340,7 +338,12 @@ fn extract_struct_field(
 
     let field_type = node
         .children(&mut node.walk())
-        .find(|c| c.kind() == "type_identifier" || c.kind() == "generic_type" || c.kind() == "array_type" || c.kind() == "reference_type")
+        .find(|c| {
+            c.kind() == "type_identifier"
+                || c.kind() == "generic_type"
+                || c.kind() == "array_type"
+                || c.kind() == "reference_type"
+        })
         .map(|t| node_text(t, source).to_string());
 
     let visibility = extract_visibility(node, source);
@@ -369,7 +372,9 @@ fn extract_enum(
             "enum_variant_list" => {
                 for variant_child in child.children(&mut child.walk()) {
                     if variant_child.kind() == "enum_variant" {
-                        if let Some(v) = extract_enum_variant(variant_child, source, file_path, language) {
+                        if let Some(v) =
+                            extract_enum_variant(variant_child, source, file_path, language)
+                        {
                             variants.push(v);
                         }
                     }
@@ -468,12 +473,17 @@ fn extract_trait(
     let mut type_alias_ids = Vec::new();
     let mut const_ids = Vec::new();
 
-    let collect_trait_items = |inner_node: tree_sitter::Node, methods: &mut Vec<EntityId>, types: &mut Vec<EntityId>, consts: &mut Vec<EntityId>| {
+    let collect_trait_items = |inner_node: tree_sitter::Node,
+                               methods: &mut Vec<EntityId>,
+                               types: &mut Vec<EntityId>,
+                               consts: &mut Vec<EntityId>| {
         let mut cursor = inner_node.walk();
         for child in inner_node.children(&mut cursor) {
             match child.kind() {
                 "function_signature" | "function_item" => {
-                    if let Ok(f) = extract_function(child, source, file_path, language, Some(trait_id), None) {
+                    if let Ok(f) =
+                        extract_function(child, source, file_path, language, Some(trait_id), None)
+                    {
                         methods.push(*f.id());
                     }
                 }
@@ -492,17 +502,27 @@ fn extract_trait(
                     for inner in child.children(&mut inner_cursor) {
                         match inner.kind() {
                             "function_signature" | "function_item" => {
-                                if let Ok(f) = extract_function(inner, source, file_path, language, Some(trait_id), None) {
+                                if let Ok(f) = extract_function(
+                                    inner,
+                                    source,
+                                    file_path,
+                                    language,
+                                    Some(trait_id),
+                                    None,
+                                ) {
                                     methods.push(*f.id());
                                 }
                             }
                             "type_item" => {
-                                if let Ok(t) = extract_type_alias(inner, source, file_path, language) {
+                                if let Ok(t) =
+                                    extract_type_alias(inner, source, file_path, language)
+                                {
                                     types.push(*t.id());
                                 }
                             }
                             "const_item" => {
-                                if let Ok(c) = extract_constant(inner, source, file_path, language) {
+                                if let Ok(c) = extract_constant(inner, source, file_path, language)
+                                {
                                     consts.push(*c.id());
                                 }
                             }
@@ -549,13 +569,21 @@ fn extract_impl(
         .map(|t| format!("impl {} for {}", t, target_type))
         .unwrap_or_else(|| format!("impl {}", target_type));
 
-    let impl_id = EntityId::from_location(language, "impl", file_path, &impl_type_name, node.start_byte());
+    let impl_id = EntityId::from_location(
+        language,
+        "impl",
+        file_path,
+        &impl_type_name,
+        node.start_byte(),
+    );
     let mut method_ids = Vec::new();
 
     let collect_impl_fns = |node: tree_sitter::Node, methods: &mut Vec<EntityId>| {
         for child in node.children(&mut node.walk()) {
             if child.kind() == "function_item" {
-                if let Ok(f) = extract_function(child, source, file_path, language, None, Some(impl_id)) {
+                if let Ok(f) =
+                    extract_function(child, source, file_path, language, None, Some(impl_id))
+                {
                     methods.push(*f.id());
                 }
             }
@@ -564,7 +592,14 @@ fn extract_impl(
                 let mut inner_cursor = child.walk();
                 for inner in child.children(&mut inner_cursor) {
                     if inner.kind() == "function_item" {
-                        if let Ok(f) = extract_function(inner, source, file_path, language, None, Some(impl_id)) {
+                        if let Ok(f) = extract_function(
+                            inner,
+                            source,
+                            file_path,
+                            language,
+                            None,
+                            Some(impl_id),
+                        ) {
                             methods.push(*f.id());
                         }
                     }
@@ -591,9 +626,9 @@ fn extract_type_alias(
     file_path: &Path,
     language: &Language,
 ) -> Result<TypeAliasFact, ExtractionDiagnostic> {
-    let name_node = node
-        .child_by_field_name("name")
-        .ok_or_else(|| diagnostic_for(node, source, file_path, language, "type alias has no name"))?;
+    let name_node = node.child_by_field_name("name").ok_or_else(|| {
+        diagnostic_for(node, source, file_path, language, "type alias has no name")
+    })?;
     let name = node_text(name_node, source);
 
     let aliased_type = node
@@ -676,17 +711,20 @@ fn extract_import(
         path_text.to_string()
     };
 
-    let evidence = evidence_for_node_with_kind(node, source, file_path, language, "use_declaration");
-    let id = EntityId::from_location(language, "import", file_path, &import_path, node.start_byte());
+    let evidence =
+        evidence_for_node_with_kind(node, source, file_path, language, "use_declaration");
+    let id = EntityId::from_location(
+        language,
+        "import",
+        file_path,
+        &import_path,
+        node.start_byte(),
+    );
 
     Ok(ImportFact::new(id, import_path, alias, is_glob, evidence))
 }
 
-fn extract_import_alias(
-    node: tree_sitter::Node,
-    source: &str,
-    path_text: &str,
-) -> Option<String> {
+fn extract_import_alias(node: tree_sitter::Node, source: &str, path_text: &str) -> Option<String> {
     if let Some(as_node) = find_child_by_kind(node, "use_as_clause") {
         return as_node
             .children(&mut as_node.walk())
@@ -741,8 +779,7 @@ mod tests {
     use crate::parsing::{self, Severity};
 
     fn parse_rust(source: &str) -> SyntaxTree {
-        let (backend, diagnostics) =
-            parsing::ts::parse_source(Language::Rust, source).unwrap();
+        let (backend, diagnostics) = parsing::ts::parse_source(Language::Rust, source).unwrap();
         let has_errors = diagnostics.iter().any(|d| *d.severity() == Severity::Error);
         SyntaxTree::new(
             PathBuf::from("test.rs"),
@@ -1020,7 +1057,11 @@ mod tests {
                         _ => None,
                     })
                     .collect();
-                assert!(imports.len() >= 2, "expected at least 2 imports, got {}", imports.len());
+                assert!(
+                    imports.len() >= 2,
+                    "expected at least 2 imports, got {}",
+                    imports.len()
+                );
                 let glob_imports: Vec<&&ImportFact> =
                     imports.iter().filter(|i| i.is_glob()).collect();
                 assert_eq!(glob_imports.len(), 1);
@@ -1053,7 +1094,7 @@ mod tests {
                     .collect();
                 assert_eq!(traits.len(), 1);
                 assert_eq!(traits[0].name(), "Iterable");
-                assert!(traits[0].methods().len() >= 1);
+                assert!(!traits[0].methods().is_empty());
             }
             other => panic!("expected Success, got {:?}", other),
         }
@@ -1168,7 +1209,12 @@ mod tests {
                         _ => None,
                     })
                     .collect();
-                assert_eq!(modules.len(), 2, "expected 2 modules, got {}", modules.len());
+                assert_eq!(
+                    modules.len(),
+                    2,
+                    "expected 2 modules, got {}",
+                    modules.len()
+                );
                 assert_eq!(modules[0].name(), "foo");
                 assert_eq!(modules[1].name(), "bar");
                 assert_eq!(modules[1].visibility(), &Visibility::Public);

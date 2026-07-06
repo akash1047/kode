@@ -8,4 +8,9 @@ license.workspace = true
 [lints]
 workspace = true
 
+[lib]
+name = "kode_app"
+
 [dependencies]
+kode-acquisition = { path = "../../crates/acquisition" }
+kode-analysis = { path = "../../crates/analysis" }

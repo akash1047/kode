@@ -134,14 +134,7 @@ mod tests {
 
     #[test]
     fn warning_diagnostic() {
-        let d = ExtractionDiagnostic::warning(
-            "partial extraction",
-            None,
-            0,
-            0,
-            0,
-            0,
-        );
+        let d = ExtractionDiagnostic::warning("partial extraction", None, 0, 0, 0, 0);
         assert_eq!(d.severity(), &Severity::Warning);
         assert!(d.source_file().is_none());
     }

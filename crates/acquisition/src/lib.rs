@@ -52,7 +52,9 @@ mod walk;
 
 pub use discovery::{discover, DefaultRepositoryDiscovery, RepositoryDiscovery};
 pub use error::Error;
-pub use language::{ExtensionLanguageDetector, Language, LanguageDetector, LanguageRegistry};
+pub use language::{
+    ExtensionLanguageDetector, Language, LanguageDetector, LanguageRegistry, ParseLanguageError,
+};
 pub use manifest::{
     CargoManifestDetector, Manifest, ManifestDetector, ManifestKind, ManifestRegistry,
 };

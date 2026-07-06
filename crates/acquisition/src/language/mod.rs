@@ -20,5 +20,5 @@ pub mod registry;
 
 pub use detector::LanguageDetector;
 pub use extension::ExtensionLanguageDetector;
-pub use model::Language;
+pub use model::{Language, ParseLanguageError};
 pub use registry::LanguageRegistry;

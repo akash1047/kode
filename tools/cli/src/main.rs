@@ -1,20 +1,10 @@
-//! CLI binary: thin composition root for the `kode` command-line tool.
-//!
-//! # Philosophy
-//!
-//! - The binary is thin: all business logic lives in crates.
-//! - The binary owns CLI parsing, dependency wiring, and command dispatch.
-//! - The binary does not implement business logic.
-//!
-//! # Extension Points
-//!
-//! New subcommands are added by:
-//! 1. Adding a variant to [`Commands`].
-//! 2. Implementing the dispatch logic in `main`.
-//!
-//! The [`Cli`] struct defines global options shared across all subcommands.
+use std::path::Path;
 
 use clap::{Parser, Subcommand};
+use kode_acquisition::Language;
+
+mod formatter;
+mod presenter;
 
 #[derive(Parser)]
 #[command(
@@ -70,10 +60,6 @@ struct Cli {
     no_color: bool,
 }
 
-/// All supported CLI commands.
-///
-/// Each variant corresponds to a top-level subcommand. New commands
-/// should be added here and dispatched in [`main`].
 #[derive(Subcommand)]
 enum Commands {
     #[command(
@@ -169,7 +155,6 @@ enum Commands {
     },
 }
 
-/// Cache management subcommands.
 #[derive(Subcommand)]
 enum CacheCommands {
     #[command(about = "Show cache information")]
@@ -178,7 +163,6 @@ enum CacheCommands {
     Clear,
 }
 
-/// Configuration management subcommands.
 #[derive(Subcommand)]
 enum ConfigCommands {
     #[command(about = "Create configuration")]
@@ -197,7 +181,6 @@ enum ConfigCommands {
     },
 }
 
-/// MCP (Model Context Protocol) server subcommands.
 #[derive(Subcommand)]
 enum McpCommands {
     #[command(about = "Start the MCP server")]
@@ -207,57 +190,106 @@ enum McpCommands {
     },
 }
 
-/// Generates a placeholder message for unimplemented commands.
 fn placeholder_message(command: &str) -> String {
     format!("{} has not been implemented yet.", command)
+}
+
+fn resolve_path<'a>(path: Option<&'a Path>, repo: Option<&'a str>) -> &'a str {
+    path.and_then(|p| p.to_str()).or(repo).unwrap_or(".")
+}
+
+fn handle_scan(
+    path: Option<&str>,
+) -> Result<presenter::scan::ScanView, Box<dyn std::error::Error>> {
+    let result = kode_app::run_scan(path)?;
+    Ok(presenter::scan::ScanView::from_scan_result(&result))
+}
+
+fn handle_status(
+    path: Option<&str>,
+) -> Result<presenter::status::StatusView, Box<dyn std::error::Error>> {
+    let result = kode_app::run_scan(path)?;
+    Ok(presenter::status::StatusView::from_scan_result(&result))
+}
+
+fn handle_files(
+    path: Option<&str>,
+    language: Option<&str>,
+) -> Result<presenter::files::FilesView, Box<dyn std::error::Error>> {
+    let result = kode_app::run_scan(path)?;
+    let filter_lang = match language {
+        Some(l) => Some(l.parse::<Language>()?),
+        None => None,
+    };
+    Ok(presenter::files::FilesView::from_scan_result(
+        &result,
+        filter_lang.as_ref(),
+    ))
 }
 
 fn main() {
     let cli = Cli::parse();
 
-    match &cli.command {
-        Commands::Scan { .. } => {
-            println!("{}", placeholder_message("Repository scanning"));
+    let result = match &cli.command {
+        Commands::Scan { path, .. } => {
+            let scan_path = resolve_path(path.as_deref().map(Path::new), cli.repo.as_deref());
+            handle_scan(Some(scan_path)).map(|o| print!("{}", formatter::scan::format(&o)))
         }
         Commands::Status => {
-            println!("{}", placeholder_message("Repository status"));
+            handle_status(cli.repo.as_deref()).map(|o| print!("{}", formatter::status::format(&o)))
         }
-        Commands::Files { .. } => {
-            println!("{}", placeholder_message("File exploration"));
-        }
+        Commands::Files { language, .. } => handle_files(cli.repo.as_deref(), language.as_deref())
+            .map(|o| print!("{}", formatter::files::format(&o))),
         Commands::Symbols { .. } => {
             println!("{}", placeholder_message("Symbol exploration"));
+            Ok(())
         }
         Commands::Query { .. } => {
             println!("{}", placeholder_message("Querying"));
+            Ok(())
         }
         Commands::Chat { .. } => {
             println!("{}", placeholder_message("Chat"));
+            Ok(())
         }
-        Commands::Cache { command } => match command {
-            CacheCommands::Status => {
-                println!("{}", placeholder_message("Cache status"));
+        Commands::Cache { command } => {
+            match command {
+                CacheCommands::Status => {
+                    println!("{}", placeholder_message("Cache status"));
+                }
+                CacheCommands::Clear => {
+                    println!("{}", placeholder_message("Cache clearing"));
+                }
             }
-            CacheCommands::Clear => {
-                println!("{}", placeholder_message("Cache clearing"));
+            Ok(())
+        }
+        Commands::Config { command } => {
+            match command {
+                ConfigCommands::Init => {
+                    println!("{}", placeholder_message("Configuration initialization"));
+                }
+                ConfigCommands::Get { .. } => {
+                    println!("{}", placeholder_message("Configuration get"));
+                }
+                ConfigCommands::Set { .. } => {
+                    println!("{}", placeholder_message("Configuration set"));
+                }
             }
-        },
-        Commands::Config { command } => match command {
-            ConfigCommands::Init => {
-                println!("{}", placeholder_message("Configuration initialization"));
+            Ok(())
+        }
+        Commands::Mcp { command } => {
+            match command {
+                McpCommands::Serve { .. } => {
+                    println!("{}", placeholder_message("MCP server"));
+                }
             }
-            ConfigCommands::Get { .. } => {
-                println!("{}", placeholder_message("Configuration get"));
-            }
-            ConfigCommands::Set { .. } => {
-                println!("{}", placeholder_message("Configuration set"));
-            }
-        },
-        Commands::Mcp { command } => match command {
-            McpCommands::Serve { .. } => {
-                println!("{}", placeholder_message("MCP server"));
-            }
-        },
+            Ok(())
+        }
+    };
+
+    if let Err(e) = result {
+        eprintln!("error: {}", e);
+        std::process::exit(1);
     }
 }
 

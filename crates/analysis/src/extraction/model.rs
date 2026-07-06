@@ -1085,17 +1085,28 @@ mod tests {
 
         // Verify same input produces same order
         let facts1 = RepositoryFacts::from_entities(
-            vec![Entity::Function(f1.clone()), Entity::Function(f2.clone()), Entity::Function(f3.clone())],
+            vec![
+                Entity::Function(f1.clone()),
+                Entity::Function(f2.clone()),
+                Entity::Function(f3.clone()),
+            ],
             Vec::new(),
         );
         let facts2 = RepositoryFacts::from_entities(
-            vec![Entity::Function(f3), Entity::Function(f1), Entity::Function(f2)],
+            vec![
+                Entity::Function(f3),
+                Entity::Function(f1),
+                Entity::Function(f2),
+            ],
             Vec::new(),
         );
 
         let names1: Vec<&str> = facts1.functions().iter().map(|f| f.name()).collect();
         let names2: Vec<&str> = facts2.functions().iter().map(|f| f.name()).collect();
-        assert_eq!(names1, names2, "ordering must be deterministic regardless of input order");
+        assert_eq!(
+            names1, names2,
+            "ordering must be deterministic regardless of input order"
+        );
         assert_eq!(facts1.functions().len(), 3);
     }
 

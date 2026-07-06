@@ -1,3 +1,5 @@
+#![allow(unused_crate_dependencies)]
+
 //! Analysis subsystem: derives higher-level repository knowledge from the Knowledge Graph.
 //!
 //! Provides pipeline Stage 2 (Parsing) and Stage 3 (Fact Extraction).

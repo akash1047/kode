@@ -29,9 +29,7 @@ pub struct ExtractionOrchestrator {
 
 impl ExtractionOrchestrator {
     pub fn new(extractor_registry: ExtractorRegistry) -> Self {
-        Self {
-            extractor_registry,
-        }
+        Self { extractor_registry }
     }
 
     /// Run extraction over the given syntax tree inventory.

@@ -3,16 +3,20 @@
 //! Runs the full pipeline:
 //!   Repository → RepositorySnapshot → SourceInventory → SyntaxTreeInventory → RepositoryFacts
 
+#![allow(unused_crate_dependencies)]
+
 use std::path::{Path, PathBuf};
 
 use kode_acquisition::{
-    DirectoryInventory, FileInventory, FileMetadata, Manifest, ManifestInventory,
-    Repository, RepositoryFile, SnapshotBuilder, Workspace, Language,
+    DirectoryInventory, FileInventory, FileMetadata, Language, Manifest, ManifestInventory,
+    Repository, RepositoryFile, SnapshotBuilder, Workspace,
 };
 use kode_analysis::extraction::{ExtractionOrchestrator, ExtractorRegistry, RepositoryFacts};
 use kode_analysis::parsing::{ParserRegistry, ParsingOrchestrator, SourceInventory};
 
-fn run_full_pipeline(files: Vec<(PathBuf, Option<Language>, &str)>) -> (RepositoryFacts, tempfile::TempDir) {
+fn run_full_pipeline(
+    files: Vec<(PathBuf, Option<Language>, &str)>,
+) -> (RepositoryFacts, tempfile::TempDir) {
     let dir = tempfile::TempDir::new().unwrap();
     let repo = Repository::new(dir.path()).unwrap();
 
@@ -73,7 +77,10 @@ fn single_function() {
 
     assert_eq!(facts.functions().len(), 1);
     assert_eq!(facts.functions()[0].name(), "greet");
-    assert_eq!(*facts.functions()[0].visibility(), kode_analysis::extraction::Visibility::Public);
+    assert_eq!(
+        *facts.functions()[0].visibility(),
+        kode_analysis::extraction::Visibility::Public
+    );
     assert!(facts.functions()[0].signature().is_some());
 
     // Verify evidence
@@ -257,11 +264,8 @@ fn imports_and_exports() {
 
 #[test]
 fn empty_file() {
-    let (facts, _dir) = run_full_pipeline(vec![(
-        PathBuf::from("empty.rs"),
-        Some(Language::Rust),
-        "",
-    )]);
+    let (facts, _dir) =
+        run_full_pipeline(vec![(PathBuf::from("empty.rs"), Some(Language::Rust), "")]);
 
     assert!(facts.is_empty());
 }
