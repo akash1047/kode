@@ -61,7 +61,7 @@ These principles are documented fully in DESIGN.md. All subsystems inherit them.
 
 ### Pipeline Ownership Note
 
-The pipeline ownership table in [PIPELINE.md](PIPELINE.md) originally assigned Parsing to Acquisition. During development, both Parsing (Stage 2) and Fact Extraction (Stage 3) were implemented in the `kode-analysis` crate. Both stages belong to the Analysis subsystem. If a stage later justifies its own crate, it should be extracted from analysis before public APIs stabilize.
+The pipeline ownership table in [PIPELINE.md](PIPELINE.md) assigns Parsing (Stage 2) and Fact Extraction (Stage 3) to the Analysis subsystem, implemented in the `kode-analysis` crate. Graph Construction (Stage 4) and Validation are owned by the `kode-graph` crate. Persistence (Stage 5) is owned by the `kode-storage` crate. Each subsystem owns one responsibility and ownership never overlaps.
 
 ---
 
@@ -294,7 +294,7 @@ Utilities
 Interfaces --> QueryEngine
 QueryEngine --> Analysis
 QueryEngine --> KnowledgeGraph
-Analysis --> Storage
+Storage --> Analysis
 Storage --> KnowledgeGraph
 KnowledgeGraph --> Acquisition
 Acquisition --> Utilities

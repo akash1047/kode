@@ -19,25 +19,32 @@ This document describes the evolution of **kode** organized by milestone rather 
 | | |
 |---|---|
 | Status | ✓ Complete |
-| Delivered | Stage 1-3 pipeline: repository discovery, parsing, fact extraction. RepositorySnapshot, SyntaxTreeInventory, RepositoryFacts artifacts. EntityId, Evidence, extractors for all Rust entity kinds. |
+| Delivered | Stage 1-3 pipeline: repository discovery, parsing, fact extraction. Immutable snapshot, syntax tree inventory, and repository facts artifacts. Stable entity identification, source location evidence, extractors for all Rust entity kinds. |
 
 ### Milestone 3 — Knowledge Graph
 
 | | |
 |---|---|
 | Status | ✓ Complete |
-| Delivered | Stage 4: Graph construction and validation. KnowledgeGraph with GraphNodeId (structural/entity identity), GraphEvidence (source/structural evidence), decomposed GraphBuilder, comprehensive GraphValidator. 28 integration tests. |
+| Delivered | Stage 4: Graph construction and validation. Deterministic graph construction with structural/entity identity separation, evidence-backed nodes and relationships, decomposed builder architecture, comprehensive validation invariant checks. Deterministic graph serialization with round-trip fidelity. |
+
+### Milestone 4 — Storage
+
+| | |
+|---|---|
+| Status | ✓ Complete |
+| Delivered | Stage 5: Graph persistence. Revisioned persistence with a backend abstraction, repository-scoped storage, schema versioning, immutable graph revisions, and cache state tracking. Content-addressed deterministic persistence with transactional guarantees. Graph serialization delegated to the graph crate's deterministic format. |
 
 ---
 
 ## Current Milestone
 
-### Milestone 4 — Storage & Analysis
+### Milestone 5 — Analysis & Query
 
 | | |
 |---|---|
 | Status | 🔄 In Progress |
-| Target | Stage 5-7: Graph persistence, dependency analysis, query execution |
+| Target | Graph analysis algorithms, query execution, MCP server |
 
 Planned deliverables:
 

@@ -3,10 +3,12 @@
 This index describes every document in the **kode** documentation set.
 
 Architecture documents describe the intended system. The Acquisition,
-Parsing, and Fact Extraction subsystems are implemented — see
-[ACQUISITION.md](ACQUISITION.md) and [ANALYSIS.md](ANALYSIS.md) for the
-current state. Remaining subsystems are planned and follow the boundaries
-established here.
+Parsing, Fact Extraction, Knowledge Graph, and Storage subsystems are
+implemented — see [ACQUISITION.md](ACQUISITION.md),
+[ANALYSIS.md](ANALYSIS.md), [KNOWLEDGE_GRAPH.md](KNOWLEDGE_GRAPH.md), and
+[STORAGE.md](STORAGE.md) for the current state. Remaining subsystems
+(Query Engine, Analysis graph algorithms, MCP) are planned and follow the
+boundaries established here.
 
 Contributors should read the architecture documents to understand the
 design intent, then refer to the contributor documents for workspace
@@ -48,6 +50,26 @@ MCP
 
 ---
 
+## Document Structure
+
+Architecture documents follow a consistent structure:
+
+1. **Purpose** — what the subsystem exists to do
+2. **Responsibilities** — what the subsystem owns and does not own
+3. **Position in Architecture** — how the subsystem fits into the pipeline
+4. **Architecture** — conceptual model, contracts, and design (backend-neutral)
+5. **Current Implementation** (optional) — notes on the existing codebase, may
+   evolve independently of architecture
+6. **Future Evolution** — planned capabilities and extension points
+7. **Design Constraints** — invariants every implementation must satisfy
+
+Architecture documents intentionally avoid duplicating Rust APIs.
+**rustdoc** is the authoritative API reference.
+Architecture documents describe concepts, ownership, and boundaries — not
+types, traits, or implementation details.
+
+---
+
 ## Document Map
 
 ### Architecture Documents
@@ -59,7 +81,7 @@ MCP
 | [PIPELINE.md](PIPELINE.md) | Repository processing pipeline — from source code to structured knowledge |
 | [ACQUISITION.md](ACQUISITION.md) | Acquisition subsystem — repository discovery, snapshot construction, detector architecture |
 | [KNOWLEDGE_GRAPH.md](KNOWLEDGE_GRAPH.md) | Knowledge Graph specification — nodes, relationships, and evidence |
-| [STORAGE.md](STORAGE.md) | Persistence, caching, and incremental updates |
+| [STORAGE.md](STORAGE.md) | Storage architecture — persistence, revision model, and backend abstraction |
 | [QUERY_ENGINE.md](QUERY_ENGINE.md) | Query execution — transforming knowledge into evidence-backed answers |
 | [ANALYSIS.md](ANALYSIS.md) | Analysis engine — Parsing (Stage 2), Fact Extraction (Stage 3), and future graph algorithms |
 | [EVIDENCE_MODEL.md](EVIDENCE_MODEL.md) | Evidence guarantees and citation model |

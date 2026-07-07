@@ -458,18 +458,36 @@ Unchanged regions are preserved.
 
 ## Serialization
 
-The graph is independent of persistence.
+The Knowledge Graph is independent of any persistence format.
 
-Possible serialization formats include:
+Serialization is an adapter layer between the in-memory graph model and a
+persistence backend. The adapter converts graph elements (nodes,
+relationships, evidence) into a serializable form and reconstructs a
+validated graph from that form.
 
-* SQLite
-* JSON
-* GraphML
-* DOT
+Key architectural properties:
 
-Serialization is an adapter.
+- Serialization is lossless — round-trip conversion preserves all graph
+  semantics, identity, and evidence.
+- The graph model has no dependency on any serialization format or library.
+- Graph serialization is never the canonical representation — the graph
+  defines graph semantics.
+- Storage backends consume the serialization adapter, not the graph directly.
+- Multiple serialization targets can be supported through the same adapter
+  mechanism.
+- The persistence format is not part of the graph model and can change
+  without affecting graph construction, validation, or query logic.
 
-It is never the canonical representation.
+### Ownership Boundaries
+
+- **Graph** owns graph semantics (nodes, relationships, evidence, identity).
+- **Serialization adapter** provides format-independent conversion between
+  graph elements and serializable representations.
+- **Storage backend** consumes the adapter to persist and retrieve graphs.
+- **Persistence format** is an implementation choice of the storage layer.
+
+The graph, serialization, and storage subsystems each have distinct
+responsibilities. No subsystem defines another's internal behavior.
 
 ---
 

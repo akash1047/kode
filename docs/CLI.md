@@ -4,23 +4,12 @@ This document describes the **kode** command-line interface.
 
 ## Implementation Status
 
-The CLI foundation is complete. The acquisition library crate provides:
+The CLI application is built on a two-layer architecture:
 
-- Repository discovery
-- Workspace detection
-- Filesystem traversal
-- Manifest discovery
-- Language detection
-- RepositorySnapshot construction
+1. **Application layer** (`kode-app` service) — owns the scan pipeline lifecycle: repository discovery, source loading, parsing, and statistics collection. Exposes `run_scan()`, `ScanResult`, and `ScanStatistics`.
+2. **Presenter/Formatter layer** (`kode-cli` tools) — presenter structs (`ScanView`, `StatusView`, `FilesView`) transform domain types into display models; formatter functions render those models as text.
 
-The current implementation does **not** yet provide:
-
-- Source code parsing or symbol extraction
-- Knowledge graph construction or querying
-- Storage, caching, or incremental updates
-- MCP server logic or LLM integration
-
-All subcommands currently accept and validate their arguments, then dispatch to a placeholder handler. The `scan` subcommand has not yet been wired to the acquisition library. Backend functionality described below documents the **intended purpose** of each command once the repository processing pipeline is wired to the CLI.
+The `scan`, `status`, and `files` subcommands are wired to the application pipeline and produce real results. The remaining subcommands (`symbols`, `query`, `chat`, `cache`, `config`, `mcp`) accept and validate arguments but dispatch to a placeholder handler.
 
 ---
 
@@ -70,15 +59,14 @@ Global options are accepted by all subcommands.
 
 ### scan
 
-Discover and index a repository (placeholder — not yet wired to the acquisition library).
+Discover repository structure, load source files, and parse supported languages.
 
-The intended pipeline is:
+Executes the full scan pipeline via `kode_app::run_scan()`:
+1. Repository discovery (workspace detection, filesystem traversal, manifest discovery, language detection)
+2. Source inventory loading
+3. Parsing with language-specific parsers (currently Rust via tree-sitter)
 
-```
-Repository → RepositoryDiscovery → RepositorySnapshot
-```
-
-Once wired, this will produce an immutable structural snapshot of the repository (workspace layout, files, directories, manifests, and detected languages). Parsing and downstream stages remain future work.
+Produces a `RepositorySnapshot` and scan statistics (files discovered, parsed, skipped, recovered, failed).
 
 ```sh
 kode scan [PATH] [OPTIONS]
@@ -91,7 +79,7 @@ Options:
 
 ### status
 
-Show repository indexing status. Once indexing is implemented, this will display repository metadata, indexed file statistics, language breakdowns, graph information, and cache location. Currently it validates arguments and dispatches to a placeholder handler.
+Show repository scan results. Executes the scan pipeline and displays repository metadata, file statistics, language breakdown, and parse statistics (parsed, recovered, skipped, failed).
 
 ```sh
 kode status
@@ -99,7 +87,7 @@ kode status
 
 ### files
 
-Explore repository files. Once the knowledge graph is implemented, this will list files known to the graph with optional filtering by language, modified status, or ignored status. Currently it validates arguments and dispatches to a placeholder handler.
+List discovered files from the scan pipeline with optional language filtering.
 
 ```sh
 kode files [OPTIONS]
@@ -112,7 +100,7 @@ Options:
 
 ### symbols
 
-Explore extracted language symbols (functions, types, traits, classes, etc.). Once parsing is implemented, this will display symbols extracted from indexed source files. Currently it validates arguments and dispatches to a placeholder handler.
+Explore extracted language symbols (functions, types, traits, classes, etc.). Planned — currently a placeholder handler.
 
 ```sh
 kode symbols [OPTIONS]
@@ -123,7 +111,7 @@ Options:
 
 ### query
 
-Query repository knowledge. Once the query engine is implemented, this will execute deterministic queries against the knowledge graph. Currently it validates arguments and dispatches to a placeholder handler.
+Query repository knowledge. Planned — currently a placeholder handler.
 
 ```sh
 kode query "<query>"
@@ -131,7 +119,7 @@ kode query "<query>"
 
 ### chat
 
-Start an interactive repository assistant session. Once LLM integration is implemented, this will answer repository questions using live source code and evidence-backed citations. Currently it validates arguments and dispatches to a placeholder handler.
+Start an interactive repository assistant session. Planned — currently a placeholder handler.
 
 ```sh
 kode chat [OPTIONS]
@@ -142,7 +130,7 @@ Options:
 
 ### cache
 
-Manage the local repository cache.
+Manage the local repository cache. Planned — currently a placeholder handler.
 
 ```sh
 kode cache <COMMAND>
@@ -154,7 +142,7 @@ Commands:
 
 ### config
 
-Manage kode configuration.
+Manage kode configuration. Planned — currently a placeholder handler.
 
 ```sh
 kode config <COMMAND>
@@ -167,7 +155,7 @@ Commands:
 
 ### mcp
 
-Run or manage the MCP server.
+Run or manage the MCP server. Planned — currently a placeholder handler.
 
 ```sh
 kode mcp <COMMAND>
@@ -262,21 +250,16 @@ kode config set api_key YOUR_KEY
 
 ## Common Workflows
 
-**First-time setup:**
+**First-time scan:**
 ```sh
-kode config init
 kode scan
+kode status
 ```
 
 **Daily use:**
 ```sh
 kode scan
-kode chat
-```
-
-**CI pipeline integration:**
-```sh
-kode status --json
+kode files --language rust
 ```
 
 ---

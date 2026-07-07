@@ -8,11 +8,12 @@ and the architectural principles that guide the project.
 Detailed specifications are documented separately under `docs/`.
 
 > **Note:** This document describes the target architecture. Acquisition,
-> Parsing, and Fact Extraction are implemented — see [ACQUISITION.md](docs/ACQUISITION.md),
-> [ANALYSIS.md](docs/ANALYSIS.md), and [PIPELINE.md](docs/PIPELINE.md) for the
-> current state. Remaining subsystems (Graph, Storage, Query, Interfaces,
-> Analysis graph algorithms) are planned and follow the boundaries established
-> here.
+> Parsing, Fact Extraction, Knowledge Graph, and Storage are implemented —
+> see [ACQUISITION.md](docs/ACQUISITION.md),
+> [ANALYSIS.md](docs/ANALYSIS.md), [KNOWLEDGE_GRAPH.md](docs/KNOWLEDGE_GRAPH.md),
+> [STORAGE.md](docs/STORAGE.md), and [PIPELINE.md](docs/PIPELINE.md) for the
+> current state. Remaining subsystems (Query Engine, Interfaces, Analysis
+> graph algorithms) are planned and follow the boundaries established here.
 
 ---
 

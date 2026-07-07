@@ -15,49 +15,28 @@ kode builds a deterministic understanding of your repository and answers questio
 
 ## Current Status
 
-The **Acquisition**, **Parsing**, and **Fact Extraction** subsystems are implemented.
+The **Acquisition**, **Parsing**, **Fact Extraction**, **Knowledge Graph**, and **Storage** subsystems are implemented as library crates.
 
-Acquisition discovers repository structure and produces an immutable structural snapshot:
+**Acquisition** discovers repository structure — workspaces, files, directories, manifests, and languages — and produces an immutable structural snapshot.
 
-- Repository discovery orchestration
-- Workspace detection
-- Filesystem traversal (.gitignore-aware)
-- Manifest discovery
-- Language detection
-- RepositorySnapshot with typed inventories
-- Detector architecture with registries (WorkspaceDetector, ManifestDetector, LanguageDetector)
-- Default detectors for Cargo workspaces, Cargo manifests, and extension-based language detection
+**Parsing** transforms source files into language-specific syntax trees via pluggable parsers. A Rust parser backed by Tree-sitter is implemented.
 
-Parsing transforms source files into language-specific syntax trees:
+**Fact Extraction** transforms syntax trees into language-independent repository facts with stable, deterministic entity identifiers and source location evidence.
 
-- `Parser` trait for language-specific parsers
-- `ParserRegistry` with language-keyed dispatch
-- `RustParser` — Tree-sitter-backed Rust parser
-- `ParsingOrchestrator` — pure transformation over immutable inputs
-- `SyntaxTree` and `SyntaxTreeInventory` — immutable domain artifacts
+**Knowledge Graph** builds an immutable, validated, traversable graph from repository facts, with structural and entity nodes, directed relationships, and evidence-backed elements.
 
-Fact Extraction transforms syntax trees into language-independent repository facts:
+**Storage** persists graph revisions with transactional guarantees, content-addressed caching, and a backend abstraction supporting multiple implementations.
 
-- `Extractor` trait for language-specific extractors
-- `ExtractorRegistry` with language-keyed dispatch
-- `RustExtractor` — Tree-sitter-backed Rust extractor
-- `ExtractionOrchestrator` — pure transformation over immutable inputs
-- `RepositoryFacts` — immutable domain artifact with entities and evidence
-- `EntityId` — stable, deterministic hash-based entity identifiers
-- `Evidence` — source location evidence attached to every entity
-
-The CLI command interface (argument parsing, help generation, command dispatch) is also implemented. The `scan` subcommand has not yet been wired to the acquisition library — all subcommands currently return placeholder messages.
+The CLI supports `scan`, `status`, and `files` subcommands wired to the repository scanning pipeline. The `symbols`, `query`, `chat`, `cache`, `config`, and `mcp` subcommands currently return placeholder messages.
 
 The following capabilities are **planned** and not yet implemented:
 
-- Knowledge Graph construction
-- Incremental caching and storage
 - Query execution
-- Analysis engine (graph algorithms)
+- Graph analysis (graph algorithms)
 - MCP server logic
 - LLM integration
 
-Contributors should read `DESIGN.md`, [ACQUISITION.md](docs/ACQUISITION.md), [ANALYSIS.md](docs/ANALYSIS.md), and the [documentation index](docs/README.md) before starting work.
+Contributors should read `DESIGN.md`, [ACQUISITION.md](docs/ACQUISITION.md), [ANALYSIS.md](docs/ANALYSIS.md), [KNOWLEDGE_GRAPH.md](docs/KNOWLEDGE_GRAPH.md), [STORAGE.md](docs/STORAGE.md), and the [documentation index](docs/README.md) before starting work.
 
 ---
 
@@ -73,7 +52,7 @@ Neither guarantees that an answer reflects the current state of your repository.
 kode takes a different approach.
 
 It parses your project, builds a deterministic **Knowledge Graph** from source code and project metadata, persists it locally for incremental updates, and requires every answer to be verified against the repository before it is returned.
-The Acquisition, Parsing, and Fact Extraction subsystems are implemented. The Knowledge Graph and downstream stages are planned.
+The Acquisition, Parsing, Fact Extraction, Knowledge Graph, and Storage subsystems are implemented. The Query Engine, Analysis graph algorithms, and downstream stages are planned.
 
 The Knowledge Graph is an implementation detail—not an AI-generated artifact. It is produced entirely through deterministic parsing and analysis.
 
@@ -89,20 +68,24 @@ The LLM never invents facts. It uses the graph to locate relevant parts of the r
 * **Workspace detection** — identifies single-package and multi-package Cargo workspaces
 * **Manifest discovery** — detects build configuration and package manifests
 * **Language detection** — classifies files by programming language via extension mapping
-* **RepositorySnapshot** — immutable structural snapshot of the repository with typed inventories
-* **Detector architecture** — composable, registry-based extension model
-* **Parsing** — language-specific syntax tree generation via tree-sitter
-* **Fact Extraction** — language-independent repository facts with evidence
-* **RepositoryFacts** — immutable domain artifact with EntityId and Evidence
+* **Composable detector architecture** — registry-based extension model for workspaces, manifests, and languages
+* **Parsing** — language-specific syntax tree generation via pluggable parsers
+* **Fact Extraction** — language-independent repository facts with source location evidence
+* **Deterministic Knowledge Graph** — built from repository facts with structural and entity nodes, directed relationships, and evidence
+* **Graph serialization** — deterministic round-trip conversion for persistence
+* **Graph validation** — topology, evidence, and identity invariant checks
+* **Storage** — revision-based persistence with a backend abstraction and local persistent storage
+* **Repository scanning pipeline** — orchestrates discovery, source loading, and parsing
 
 **Planned:**
 
 * **Evidence-backed answers** — every claim includes `path:line` citations
-* **Deterministic Knowledge Graph** — built from repository facts
 * **Incremental indexing** — only changed files are reparsed
 * **Interactive REPL** — terminal chat with full repository awareness
 * **One-shot queries** — ask a question and exit
 * **MCP server** — expose your repository to any MCP-compatible AI agent
+* **Query execution** — graph traversal with evidence verification
+* **Graph analysis** — dependency analysis, cycle detection, metrics
 * **Additional language support** — Python, TypeScript, JavaScript, Go, Java and more
 * **Manifest awareness** — npm, Python, Docker and more
 * **Local-first** — indexes remain on your machine
@@ -131,14 +114,13 @@ Initialize configuration:
 kode config init
 ```
 
-Scan the current repository (placeholder — not yet wired to the acquisition library):
+Scan the current repository:
 
 ```sh
 kode scan
 ```
 
-All subcommands currently validate arguments and return a placeholder message.
-Full repository processing is under development. See [docs/ACQUISITION.md](docs/ACQUISITION.md) for the implemented Acquisition subsystem.
+The `scan` command runs the full discovery, source loading, and parsing pipeline. The `status` and `files` commands display scan results. See [docs/CLI.md](docs/CLI.md) for the complete command reference.
 
 ---
 
@@ -166,19 +148,26 @@ Fact Extraction             ─── Implemented (Analysis)
 RepositoryFacts
      │
      ▼
-Knowledge Graph             ─── Planned
+Knowledge Graph             ─── Implemented (Graph)
      │
-     ├── Storage
-     ├── Query Engine
-     ├── Analysis (graph algorithms)
-     └── Interfaces
+     ▼
+Graph Validation            ─── Implemented (Graph)
+     │
+     ▼
+Graph Revision              ◄── Storage boundary (implemented)
+     │
+     ├── Query Engine        ─── Planned
+     ├── Analysis (graph algorithms) ─── Planned
+     └── Interfaces          ─── Planned
 ```
 
 The Acquisition boundary produces an **immutable structural snapshot of the repository** containing workspace structure, files, directories, manifests, and language inventories.
 
 Parsing and Fact Extraction are implemented in the Analysis subsystem — see [ANALYSIS.md](docs/ANALYSIS.md) and [PIPELINE.md](docs/PIPELINE.md).
 
-When the full pipeline is implemented, kode will use the graph to efficiently locate relevant code, then read original source files to verify every claim before returning an answer.
+The Knowledge Graph and Storage are implemented — see [KNOWLEDGE_GRAPH.md](docs/KNOWLEDGE_GRAPH.md) and [STORAGE.md](docs/STORAGE.md).
+
+When the full pipeline is complete, kode will use the graph to efficiently locate relevant code, then read original source files to verify every claim before returning an answer.
 
 ---
 
@@ -236,73 +225,71 @@ Incremental caching is not yet implemented.
 
 ## Commands
 
-All commands currently accept arguments and return a placeholder message.
-
 ```sh
-kode scan
+kode scan [PATH]
 ```
 
-Discover repository structure and produce a RepositorySnapshot (intended behavior — not yet wired).
+Discover repository structure, load source files, and parse supported languages. Produces a RepositorySnapshot and syntax tree statistics.
 
 ```sh
 kode status
 ```
 
-Show repository indexing status (planned).
+Show repository scan results including file counts, language breakdown, and parse statistics.
 
 ```sh
-kode files
+kode files [OPTIONS]
 ```
 
-Explore repository files (planned).
+List discovered files with optional language filtering.
 
 ```sh
 kode symbols
 ```
 
-Explore extracted symbols (planned).
+Explore extracted symbols (planned — placeholder).
 
 ```sh
 kode query "<query>"
 ```
 
-Query repository knowledge (planned).
+Query repository knowledge (planned — placeholder).
 
 ```sh
 kode chat
 ```
 
-Interactive chat session (planned).
+Interactive chat session (planned — placeholder).
 
 ```sh
 kode chat -m "..."
 ```
 
-Ask a single question (planned).
+Ask a single question (planned — placeholder).
 
 ```sh
 kode mcp serve .
 ```
 
-Run the MCP server (planned).
+Run the MCP server (planned — placeholder).
 
 ```sh
 kode cache status
 ```
 
-Inspect repository cache (planned).
+Inspect repository cache (planned — placeholder).
 
 ```sh
 kode cache clear
 ```
 
-Remove the cache for the current repository (planned).
+Remove the cache for the current repository (planned — placeholder).
 
 ```sh
 kode config init
 ```
 
-Initialize configuration.
+Initialize configuration (planned — placeholder).
 
 ---
 

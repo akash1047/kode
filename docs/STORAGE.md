@@ -16,26 +16,20 @@ It persists the Knowledge Graph and related metadata.
 
 ---
 
-## Terminology
+## Implementation Status
 
-See [GLOSSARY.md](GLOSSARY.md) for definitions of all core terms.
+The storage layer is fully implemented in the `kode-storage` crate
+(`crates/storage/`). It provides a `StorageBackend` abstraction with a
+default SQLite implementation, repository-scoped storage services, revision
+tracking, and cache metadata.
+
+Graph serialization is delegated to the graph crate's serialization adapter.
 
 ---
 
-## Purpose
+## Terminology
 
-The storage layer has four primary responsibilities:
-
-* persist repository knowledge
-* support incremental updates
-* provide efficient query access
-* preserve graph revisions
-
-Storage should never influence repository understanding.
-
-The repository remains the source of truth.
-
-The Knowledge Graph remains the canonical domain model.
+See [GLOSSARY.md](GLOSSARY.md) for definitions of all core terms.
 
 ---
 
@@ -44,25 +38,25 @@ The Knowledge Graph remains the canonical domain model.
 ```mermaid
 flowchart LR
 
-Repository
+    Repository
 
---> Acquisition
+    --> Acquisition
 
---> KnowledgeGraph["Knowledge Graph"]
+    --> KnowledgeGraph["Knowledge Graph"]
 
-KnowledgeGraph --> Storage
+    KnowledgeGraph --> Storage
 
-KnowledgeGraph --> QueryEngine["Query Engine"]
+    KnowledgeGraph --> QueryEngine["Query Engine"]
 
-Storage --> Analysis
+    Storage --> Analysis
 
-Analysis --> QueryEngine
+    Analysis --> QueryEngine
 
-QueryEngine --> CLI
+    QueryEngine --> CLI
 
-QueryEngine --> MCP
+    QueryEngine --> MCP
 
-QueryEngine --> LLM
+    QueryEngine --> LLM
 ```
 
 Storage is positioned after graph construction.
@@ -75,374 +69,134 @@ It never parses repositories directly.
 
 The storage layer is responsible for:
 
-* repository cache
-* graph persistence
-* metadata persistence
-* incremental updates
-* graph revisions
-* efficient retrieval
+- graph persistence
+- graph revision tracking
+- cache metadata management
+- schema versioning
+- efficient retrieval
 
 The storage layer is **not** responsible for:
 
-* repository discovery
-* parsing
-* graph construction
-* graph algorithms
-* AI interaction
+- repository discovery
+- parsing
+- graph construction
+- graph algorithms
+- AI interaction
 
 ---
 
-## Design Principles
+## Architecture
 
-The storage layer follows the architectural principles defined in [DESIGN.md](../DESIGN.md#architecture-principles). See those principles for the canonical definitions.
+### Backend Abstraction
 
----
+The storage layer defines a backend contract that all implementations must
+satisfy. The contract covers:
 
-## Storage Model
+- schema initialization and version checking
+- atomic revision persistence
+- graph loading by revision
+- revision listing and metadata retrieval
+- repository data removal
 
-Conceptually, storage consists of several logical datasets.
+Backends are format-independent. Graph serialization is delegated to the
+graph crate's serialization adapter — backends receive pre-serialized data
+and return data to be deserialized.
 
-```mermaid
-flowchart TD
+### Revision Model
 
-Repository
+Every successful persistence operation produces a new revision:
 
-KnowledgeGraph["Knowledge Graph"]
+| Graph Revision  |
+|-----------------|
+| Repository      |
+| Version         |
+| Timestamp       |
+| Content Hash    |
+| Node Count      |
+| Relationship Count |
 
-RepositoryMetadata
+Revisions are immutable. Repository changes produce new revisions rather
+than mutating existing ones. This guarantees deterministic behavior and
+thread safety.
 
-NodeStore
+### Serialization
 
-RelationshipStore
+The storage layer does not define its own graph serialization format. It
+delegates to the graph crate's serialization adapter:
 
-EvidenceStore
-
-CacheMetadata
-
-Repository --> RepositoryMetadata
-
-KnowledgeGraph --> NodeStore
-
-KnowledgeGraph --> RelationshipStore
-
-KnowledgeGraph --> EvidenceStore
-
-RepositoryMetadata --> CacheMetadata
+```
+KnowledgeGraph → serialization adapter → storage backend
 ```
 
-The exact physical schema is an implementation detail.
+On retrieval the flow reverses:
 
-The logical responsibilities remain stable.
-
----
-
-## Repository Metadata
-
-Repository metadata identifies the repository and cache.
-
-Examples include:
-
-* repository identifier
-* root path
-* repository hash
-* default branch
-* cache version
-* schema version
-
-This information determines cache validity.
-
----
-
-## Node Storage
-
-Every graph node is persisted.
-
-Typical information includes:
-
-* node identifier
-* node type
-* qualified name
-* language
-* metadata
-* source location
-
-Node storage should support efficient lookup by:
-
-* identifier
-* type
-* name
-* source file
-
----
-
-## Relationship Storage
-
-Relationships are stored independently from nodes.
-
-Typical attributes include:
-
-* source node
-* destination node
-* relationship type
-* evidence reference
-
-Relationships should support efficient traversal in both directions.
-
-Examples:
-
-* callers
-* callees
-* imports
-* dependents
-
----
-
-## Evidence Storage
-
-Evidence is stored separately.
-
-Typical evidence includes:
-
-* file path
-* line range
-* column range
-* parser source
-
-Separating evidence avoids duplication across relationships.
-
----
-
-## Cache Metadata
-
-The cache tracks repository state.
-
-Typical metadata includes:
-
-* schema version
-* graph version
-* parser versions
-* repository fingerprint
-* last update
-
-Cache metadata determines whether incremental processing is possible.
-
----
-
-## Repository Identity
-
-Each repository has a stable identity.
-
-Conceptually:
-
-```text
-Repository
-
-↓
-
-Fingerprint
-
-↓
-
-Cache Directory
-
-↓
-
-Persistent Storage
+```
+storage backend → serialization adapter → KnowledgeGraph
 ```
 
-The repository identity should remain stable across executions.
-
-Moving the repository should not unnecessarily invalidate the cache when
-identity can be preserved.
-
----
-
-## Incremental Updates
-
-Incremental processing is the primary design goal.
-
-```mermaid
-flowchart LR
-
-RepositoryChange
-
---> DetectChanges
-
---> ParseChangedFiles
-
---> UpdateGraph
-
---> PersistChanges
-
---> NewRevision
-```
-
-Only affected graph elements should be rewritten.
-
-Unchanged entities remain untouched.
+This separation keeps the storage backend format-independent and the graph
+model free of persistence concerns. Changing the serialization format
+requires no changes to storage backends, and vice versa.
 
 ---
 
-## Change Detection
+## Current Implementation
 
-Before parsing begins, the storage layer determines what changed.
+The following sections describe the current implementation. This content
+is documentation of the existing codebase — it is not an architectural
+specification and will change as the implementation evolves.
 
-Possible mechanisms include:
+### SQLite Backend
 
-* content hash
-* modification time
-* file size
-* repository metadata
+The default backend uses SQLite. The schema stores:
 
-Hash-based validation should be preferred whenever practical.
+- application schema version
+- repository identity and fingerprint
+- revision metadata with content hash and timestamps
+- serialized graph data
+- cache state summary
 
----
+Persistence is atomic: a single transaction serializes the graph, persists
+it, and returns a revision with a content hash. On failure, the transaction
+is rolled back — no partial state is visible.
 
-## Graph Revisions
+### Schema Versioning
 
-Every successful update produces a new graph revision.
+The storage schema carries a major/minor version number. Backward-incompatible
+changes increment the major version; additive changes increment the minor
+version. The version is checked on every initialization.
 
-```mermaid
-stateDiagram-v2
+### Transactional Guarantees
 
-[*] --> Revision1
+All persistence operations are atomic:
 
-Revision1 --> Revision2
+- Graph serialization and all writes occur within a single transaction.
+- On failure, the transaction rolls back entirely.
+- Concurrent readers never observe partial state.
+- Partial revisions are never exposed.
 
-Revision2 --> Revision3
-```
+### Deterministic Persistence
 
-Consumers should always observe a consistent graph revision.
+Content hashing ensures:
 
-Partial updates must never become visible.
-
----
-
-## Transactions
-
-Updates should be transactional.
-
-```mermaid
-flowchart LR
-
-Begin
-
---> UpdateNodes
-
---> UpdateRelationships
-
---> UpdateEvidence
-
---> Commit
-```
-
-Failures should roll back completely.
-
-The storage layer should never expose partially updated repository state.
+- Identical graphs produce identical storage artifacts.
+- Revision identities are deterministic given the same graph content.
+- Cache invalidation is reliable.
 
 ---
 
-## Cache Lifecycle
+## Future Evolution
 
-```mermaid
-stateDiagram-v2
+SQLite is the default implementation. The `StorageBackend` trait is
+designed for alternative backends:
 
-[*] --> Missing
-
-Missing --> Building
-
-Building --> Ready
-
-Ready --> Updating
-
-Updating --> Ready
-
-Ready --> Invalid
-
-Invalid --> Rebuild
-
-Rebuild --> Ready
-```
-
-Cache state transitions should be deterministic.
-
----
-
-## Serialization
-
-The storage layer defines how graph data is persisted.
-
-Possible serialization targets include:
-
-* SQLite
-* JSON
-* GraphML
-* Binary snapshots
-
-Serialization formats may evolve independently of the graph model.
-
----
-
-## Performance Goals
-
-The storage layer should optimize for:
-
-* fast startup
-* fast incremental updates
-* efficient graph traversal
-* low memory usage
-* minimal disk writes
-
-Read performance is generally more important than write performance.
-
----
-
-## Failure Recovery
-
-Storage failures should never corrupt repository knowledge.
-
-Recovery strategies include:
-
-* transaction rollback
-* cache invalidation
-* graph rebuild
-* schema migration
-
-If recovery is impossible, the cache should be discarded and rebuilt from
-the repository.
-
----
-
-## Schema Evolution
-
-Storage schemas will evolve.
-
-Schema changes should:
-
-* preserve compatibility where practical
-* support automatic migration
-* invalidate incompatible caches
-* never compromise correctness
-
-Schema versioning is independent of application versioning.
-
----
-
-## Future Storage Backends
-
-SQLite is the default implementation.
-
-Future storage backends may include:
-
-* PostgreSQL
-* RocksDB
-* LMDB
-* DuckDB
-* in-memory storage
+- PostgreSQL
+- RocksDB
+- LMDB
+- DuckDB
+- in-memory storage
 
 Alternative backends must preserve the same logical behavior.
-
-The storage interface should remain backend-independent.
 
 ---
 
@@ -450,25 +204,22 @@ The storage interface should remain backend-independent.
 
 Every storage implementation must satisfy the following constraints.
 
-* Local-first
-* Deterministic
-* Transactional
-* Incremental
-* Versioned
-* Backend-independent
-* Graph-preserving
-* Recoverable
+- Local-first
+- Deterministic
+- Transactional
+- Incremental
+- Versioned
+- Backend-independent
+- Graph-preserving
+- Recoverable
 
 These constraints are architectural invariants.
-
-Storage exists to persist repository knowledge efficiently.
-
-It must never become the source of repository knowledge.
 
 ---
 
 ## See Also
 
+- [KNOWLEDGE_GRAPH.md](KNOWLEDGE_GRAPH.md) — Graph model and serialization
 - [DESIGN.md](../DESIGN.md) — System design and invariants
+- [PIPELINE.md](PIPELINE.md) — Pipeline stage details
 - [Documentation index](README.md) — All documents
-

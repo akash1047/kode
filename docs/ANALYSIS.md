@@ -1,6 +1,6 @@
 # Analysis
 
-This document describes the **Analysis** subsystem, responsible for deriving higher-level repository knowledge from the Knowledge Graph. Analysis implements Pipeline Stage 2 (Parsing) and Stage 3 (Fact Extraction). It will later support dependency analysis, impact analysis, and other graph-based computations.
+This document describes the **Analysis** subsystem. Analysis implements Pipeline Stage 2 (Parsing) and Stage 3 (Fact Extraction). It will later support graph-based computations (dependency analysis, impact analysis, and other algorithms) by consuming the Knowledge Graph.
 
 ---
 

@@ -33,7 +33,7 @@ Every stage produces an immutable artifact consumed by the next stage.
 
 ---
 
-> **Implementation status:** Stage 1 (Repository Discovery), Stage 2 (Parsing), Stage 3 (Fact Extraction), and Stage 4 (Graph Construction + Validation) are implemented. Stages 5–8 document the architectural design and are planned as future work.
+> **Implementation status:** Stage 1 (Repository Discovery), Stage 2 (Parsing), Stage 3 (Fact Extraction), Stage 4 (Graph Construction + Validation), and Stage 5 (Persistence) are implemented. Stages 6–8 document the architectural design and are planned as future work.
 
 ## Design Principles
 
@@ -95,16 +95,16 @@ Later stages organize, analyze, and present those facts.
 
 ## Pipeline Summary
 
-| Stage | Input | Output | Owner |
-|---------|--------|---------|---------|
-| Repository Discovery | Repository | RepositorySnapshot | Acquisition |
-| Parsing | RepositorySnapshot + SourceInventory | Syntax Trees | Analysis |
-| Fact Extraction | Syntax Trees | Repository Facts | Analysis |
-| Graph Construction | Repository Facts | Knowledge Graph | Graph |
-| Graph Validation | Knowledge Graph | Validated Graph | Graph |
-| Persistence | Validated Graph | Graph Revision | Storage |
-| Analysis | Graph Revision | Derived Facts | Analysis |
-| Query Execution | Graph Revision + Repository | Evidence-backed Results | Query Engine |
+| Stage | Input | Output | Owner | Status |
+|---------|--------|---------|---------|--------|
+| Repository Discovery | Repository | RepositorySnapshot | Acquisition | ✓ Implemented |
+| Parsing | RepositorySnapshot + SourceInventory | Syntax Trees | Analysis | ✓ Implemented |
+| Fact Extraction | Syntax Trees | Repository Facts | Analysis | ✓ Implemented |
+| Graph Construction | Repository Facts | Knowledge Graph | Graph | ✓ Implemented |
+| Graph Validation | Knowledge Graph | Validated Graph | Graph | ✓ Implemented |
+| Persistence | Validated Graph | Graph Revision | Storage | ✓ Implemented |
+| Analysis | Graph Revision | Derived Facts | Analysis | Planned |
+| Query Execution | Graph Revision + Repository | Evidence-backed Results | Query Engine | Planned |
 
 Each stage owns exactly one transformation.
 
@@ -627,7 +627,10 @@ Invalid graphs are discarded.
 
 ---
 
-## Stage 6 — Persistence
+## Stage 5 — Persistence (Implemented)
+
+The Persistence subsystem lives in the `kode-storage` crate at `crates/storage/`.
+See [STORAGE.md](STORAGE.md) for the full specification.
 
 ### Purpose
 
@@ -651,6 +654,17 @@ Validated Graph.
 Graph Revision.
 
 ---
+
+### Implementation
+
+Persistence is built on a backend abstraction providing:
+
+1. **Backend abstraction** — interface for storage operations including initialization, revision management, graph persistence, metadata caching, and schema discovery
+2. **Repository-scoped storage** — binds a backend to a specific repository for scoped operations
+3. **Schema versioning** — tracks schema compatibility for safe migration
+4. **Revisioned persistence** — immutable versioned snapshots with content-addressed identification and metadata tracking
+5. **Cache state tracking** — summary of cache state including latest revision and graph format version
+6. **Deterministic serialization** — graph data is serialized via the graph crate's deterministic format, keeping the backend format-independent
 
 ### Responsibilities
 
@@ -703,7 +717,7 @@ Failed persistence never exposes partial graph revisions.
 
 ---
 
-## Stage 7 — Analysis
+## Stage 6 — Analysis (Planned)
 
 ### Purpose
 
@@ -797,7 +811,7 @@ Analysis failures never invalidate the underlying graph revision.
 
 ---
 
-## Stage 8 — Query Execution
+## Stage 7 — Query Execution (Planned)
 
 ### Purpose
 
@@ -938,16 +952,16 @@ This document references the following terms defined in [GLOSSARY.md](GLOSSARY.m
 
 Each stage belongs to exactly one architectural subsystem.
 
-| Pipeline Stage | Owning Subsystem |
-|---------------|------------------|
-| Repository Discovery | Acquisition (see [ACQUISITION.md](ACQUISITION.md)) |
-| Parsing | Analysis (see [ANALYSIS.md](ANALYSIS.md)) |
-| Fact Extraction | Analysis (see [ANALYSIS.md](ANALYSIS.md)) |
-| Graph Construction | Knowledge Graph |
-| Graph Validation | Knowledge Graph |
-| Persistence | Storage |
-| Analysis | Analysis |
-| Query Execution | Query Engine |
+| Pipeline Stage | Owning Subsystem | Status |
+|---------------|------------------|--------|
+| Repository Discovery | Acquisition (see [ACQUISITION.md](ACQUISITION.md)) | ✓ Implemented |
+| Parsing | Analysis (see [ANALYSIS.md](ANALYSIS.md)) | ✓ Implemented |
+| Fact Extraction | Analysis (see [ANALYSIS.md](ANALYSIS.md)) | ✓ Implemented |
+| Graph Construction | Knowledge Graph | ✓ Implemented |
+| Graph Validation | Knowledge Graph | ✓ Implemented |
+| Persistence | Storage | ✓ Implemented |
+| Analysis | Analysis | Planned |
+| Query Execution | Query Engine | Planned |
 
 Each subsystem owns one responsibility.
 
