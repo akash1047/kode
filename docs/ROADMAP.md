@@ -14,9 +14,32 @@ This document describes the evolution of **kode** organized by milestone rather 
 | Delivered | Public CLI contract, command hierarchy, argument parsing, help generation, command dispatch, placeholder handlers, parser validation |
 | Next | Repository discovery and indexing |
 
+### Milestone 2 — Acquisition & Analysis
+
+| | |
+|---|---|
+| Status | ✓ Complete |
+| Delivered | Stage 1-3 pipeline: repository discovery, parsing, fact extraction. RepositorySnapshot, SyntaxTreeInventory, RepositoryFacts artifacts. EntityId, Evidence, extractors for all Rust entity kinds. |
+
+### Milestone 3 — Knowledge Graph
+
+| | |
+|---|---|
+| Status | ✓ Complete |
+| Delivered | Stage 4: Graph construction and validation. KnowledgeGraph with GraphNodeId (structural/entity identity), GraphEvidence (source/structural evidence), decomposed GraphBuilder, comprehensive GraphValidator. 28 integration tests. |
+
 ---
 
-## Next Release
+## Current Milestone
+
+### Milestone 4 — Storage & Analysis
+
+| | |
+|---|---|
+| Status | 🔄 In Progress |
+| Target | Stage 5-7: Graph persistence, dependency analysis, query execution |
+
+Planned deliverables:
 
 - Call graph analysis — full resolution of function call relationships across languages
 - Symbol search — fast, fuzzy symbol lookup across the Knowledge Graph

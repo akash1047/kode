@@ -35,6 +35,8 @@ Applications (tools/cli, services/app)
 
 Dependencies flow downward. No circular dependencies are permitted.
 
+`kode-common` is the lowest-level library crate; all other crates may depend on it.
+
 ---
 
 ## Crate Reference
@@ -63,13 +65,46 @@ Dependencies flow downward. No circular dependencies are permitted.
 **Path:** `crates/graph/`
 
 **Current State**
-- Placeholder crate.
+- Stage 4 (Graph Construction) fully implemented
+- `KnowledgeGraph` — immutable, validated, traversable in-memory graph
+- `GraphNodeId` — dual identity model: `Structural(StructuralNodeId)` for synthetic nodes, `Entity(EntityId)` for extracted entities
+- `GraphEvidence` — dual evidence model: `Source(Evidence)` for parser-produced evidence, `Structural(StructuralEvidence)` for synthetic graph elements
+- `StructuralEvidence` — typed enum with `Repository`, `Workspace`, and `File` variants
+- `Node` — graph node with kind, name, metadata, and evidence
+- `Relationship` — directed edge with kind, metadata, and evidence
+- `GraphBuilder` — decomposed into focused sub-modules; performs **zero repository discovery**
+- `RepositoryContext` — sole owner of temporary repository metadata derivation (external to builder)
+- `GraphBuildState` — single mutable state object during construction
+- `StructuralLookup` — pre-computed structural IDs (generated once, consumed by relationship building)
+- `GraphValidator` — topology validation (structural roots, orphan detection, duplicate safety net); constructor invariants are enforced at the type level
+- Integration tests covering structure, determinism, evidence, traversal, edge cases, and structural separation
+
+**Ownership Boundaries**
+- `RepositoryContext` is constructed externally and passed to `GraphBuilder::build`
+- Structural IDs are generated exactly once and cached in `StructuralLookup`
+- All temporary repository heuristics live in exactly one file (`builder/context.rs`)
+
+**Public API**
+- `GraphBuilder::build(&RepositoryFacts, &RepositoryContext) -> Result<KnowledgeGraph, Vec<ValidationError>>`
+- `RepositoryContext::from_facts(&RepositoryFacts) -> Self` (temporary — Stage 5 replaces this)
+- `RepositoryContext::new(root_path, workspace_name, source_files) -> Self` (canonical constructor)
+- `KnowledgeGraph::node_by_id(&GraphNodeId) -> Option<&Node>`
+- `KnowledgeGraph::nodes()`, `relationships()`, `node_count()`, `relationship_count()`
+- `KnowledgeGraph::nodes_by_kind(NodeKind) -> impl Iterator<Item = &Node>`
+- `KnowledgeGraph::outgoing(&GraphNodeId)`, `incoming(&GraphNodeId)`
+- `GraphNodeId::Structural(StructuralNodeId)` / `GraphNodeId::Entity(EntityId)`
+- `GraphEvidence::Source(Evidence)` / `GraphEvidence::Structural(StructuralEvidence)`
+- `StructuralEvidence` — typed structural evidence: `Repository { root: PathBuf }`, `Workspace { name }`, `File { path }`
+- `StructuralNodeId::from_parts(StructuralNodeKind, path, name)` — deterministic identity (FNV-1a hashing from `kode_common::hash`)
+
+**Shared Constants**
+- `DEFAULT_WORKSPACE_NAME` — `"default"`
+- `REPOSITORY_HASH_NAME` — `"repo"`
+- `REPOSITORY_NODE_NAME` — `"repository"`
 
 **Planned Responsibility**
-- Knowledge Graph construction
-- Node and relationship management
-- Graph validation
-- Graph traversal APIs
+- Stage 5: Replace `RepositoryContext::from_facts` with Acquisition-provided metadata
+- Future: additional index structures (name, qualified name, file lookup)
 
 ---
 

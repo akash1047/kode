@@ -1,5 +1,4 @@
 use std::cmp::Ordering;
-use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 use std::ops::Range;
 use std::path::{Path, PathBuf};
@@ -7,6 +6,7 @@ use std::path::{Path, PathBuf};
 use kode_acquisition::Language;
 
 use crate::extraction::diagnostic::ExtractionDiagnostic;
+use kode_common::hash::Fnv1aHasher;
 
 /// Stable, deterministic identifier for an extracted entity.
 ///
@@ -23,7 +23,7 @@ impl EntityId {
         name: &str,
         byte_offset: usize,
     ) -> Self {
-        let mut hasher = DefaultHasher::new();
+        let mut hasher = Fnv1aHasher::new();
         language.hash(&mut hasher);
         kind.hash(&mut hasher);
         path.hash(&mut hasher);

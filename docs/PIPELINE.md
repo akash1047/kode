@@ -33,7 +33,7 @@ Every stage produces an immutable artifact consumed by the next stage.
 
 ---
 
-> **Implementation status:** Stage 1 (Repository Discovery), Stage 2 (Parsing), and Stage 3 (Fact Extraction) are implemented. Stages 4–8 document the architectural design and are planned as future work.
+> **Implementation status:** Stage 1 (Repository Discovery), Stage 2 (Parsing), Stage 3 (Fact Extraction), and Stage 4 (Graph Construction + Validation) are implemented. Stages 5–8 document the architectural design and are planned as future work.
 
 ## Design Principles
 
@@ -477,7 +477,9 @@ Extraction failures produce diagnostics but do not abort processing for unaffect
 
 ---
 
-## Stage 4 — Graph Construction
+## Stage 4 — Graph Construction & Validation (Implemented)
+
+Stage 4 lives in the `kode-graph` crate at `crates/graph/`.
 
 ### Purpose
 
@@ -494,25 +496,86 @@ Every deterministic relationship becomes an edge.
 
 ### Input
 
-Repository Facts.
+Repository Facts (from Stage 3).
 
 ---
 
 ### Output
 
-Knowledge Graph.
+Validated Knowledge Graph.
 
 ---
+
+### Implementation
+
+Graph construction and validation are combined in a single pipeline within the
+`kode-graph` crate.
+
+**GraphBuilder** decomposes construction into focused sub-modules:
+
+| Module | Responsibility |
+|---------|---------------|
+| `builder/mod.rs` | Orchestration — coordinates the build pipeline via [`GraphBuildState`] |
+| `builder/context.rs` | [`RepositoryContext`] — sole owner of temporary repository metadata derivation (external to the builder) |
+| `builder/structural.rs` | Structural nodes (repository, workspace, file); returns [`StructuralLookup`] |
+| `builder/node_builder.rs` | Entity nodes (one per extracted fact) |
+| `builder/relationship_builder.rs` | Relationship derivation — consumes [`StructuralLookup`] |
+| `builder/identity.rs` | Graph-level identity and evidence construction |
+| `builder/index.rs` | Lookup and edge index structures |
+
+### Ownership Boundaries
+
+* [`RepositoryContext`] is constructed externally and passed to [`GraphBuilder::build`].
+* Structural IDs are generated exactly once by `structural` and cached for relationship construction — no duplicate hashing.
+* [`GraphBuildState`] replaces independent vectors/maps during construction.
+
+**GraphValidator** performs all documented invariant checks:
+
+- Structural root validation (exactly one repository, exactly one workspace)
+- Evidence completeness (every node and relationship has evidence)
+- Identity/evidence consistency (structural nodes use structural identity + evidence; entity nodes use entity identity + source evidence)
+- Orphan relationship detection
+- Duplicate node ID safety net
+
+**KnowledgeGraph** is the immutable output:
+
+- Nodes sorted deterministically by [`GraphNodeId`]
+- O(log n) lookup by ID via `BTreeMap`
+- O(1) outgoing/incoming edge traversal
+- `nodes_by_kind` filtered iteration
+
+### Identity Model
+
+Structural graph nodes (repository, workspace, file) use
+[`GraphNodeId::Structural`] with [`StructuralNodeId`], computed from
+(kind, path, name) in a namespace separate from extracted entities.
+
+Extracted entity nodes use [`GraphNodeId::Entity`] wrapping the existing
+[`EntityId`].
+
+Structural and entity identities cannot collide — they use separate hash
+namespaces.
+
+### Evidence Model
+
+Extracted entity nodes carry [`GraphEvidence::Source`] wrapping the
+original parser-produced [`Evidence`].
+
+Structural nodes carry [`GraphEvidence::Structural`] with a human-readable
+description.
+
+No structural node fabricates parser evidence.
 
 ### Responsibilities
 
 Graph Construction is responsible for:
 
-- creating nodes
-- creating relationships
-- assigning identifiers
-- attaching metadata
+- creating structural nodes (repository, workspace, file)
+- creating entity nodes from extracted facts
+- creating relationships (contains, declares, defines)
+- assigning structural identifiers
 - attaching evidence
+- validating graph invariants
 - preserving deterministic ordering
 
 The graph becomes the canonical representation of repository knowledge.
@@ -525,7 +588,7 @@ Knowledge Graph.
 
 The graph contains:
 
-- nodes
+- nodes (structural + entity)
 - relationships
 - evidence
 - metadata
@@ -543,6 +606,8 @@ Graph Construction must satisfy:
 - language independent
 - evidence backed
 - reproducible
+- structural/entity identity separation
+- structural/entity evidence separation
 
 Graph construction never performs architectural interpretation.
 
@@ -555,78 +620,10 @@ Graph Construction may fail when:
 - repository facts are inconsistent
 - duplicate identifiers are generated
 - invalid relationships are detected
+- structural roots are missing or duplicated
+- evidence is missing
 
 Invalid graphs are discarded.
-
----
-
-## Stage 5 — Graph Validation
-
-### Purpose
-
-Ensure the constructed graph satisfies every architectural invariant before it
-becomes available to consumers.
-
-Validation protects downstream systems from malformed repository knowledge.
-
----
-
-### Input
-
-Knowledge Graph.
-
----
-
-### Output
-
-Validated Graph.
-
----
-
-### Responsibilities
-
-Validation verifies:
-
-- node uniqueness
-- relationship integrity
-- evidence completeness
-- metadata completeness
-- graph consistency
-- identifier stability
-
-Only validated graphs may proceed further.
-
----
-
-### Produced Artifact
-
-Validated Graph.
-
-This graph is considered the canonical repository model.
-
----
-
-### Invariants
-
-Validation never modifies repository knowledge.
-
-It either:
-
-- accepts the graph, or
-- rejects the graph.
-
----
-
-### Failure Modes
-
-Validation fails when:
-
-- duplicate nodes exist
-- relationships reference missing nodes
-- evidence is missing
-- graph invariants are violated
-
-Rejected graphs never reach persistence.
 
 ---
 

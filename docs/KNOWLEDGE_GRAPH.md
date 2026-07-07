@@ -100,6 +100,14 @@ Those responsibilities belong to other subsystems.
 
 ---
 
+## Implementation Status
+
+The Knowledge Graph is fully implemented as Stage 4 of the pipeline.
+
+The implementation lives in the `kode-graph` crate (`crates/graph/`).
+
+---
+
 ## Core Concepts
 
 The graph consists of three fundamental concepts.
@@ -132,27 +140,41 @@ A node represents an entity within the repository.
 
 Nodes describe **things**, not actions.
 
-Examples include:
+Two categories exist:
 
-* Repository
-* Workspace
-* Package
-* Directory
-* File
+### Structural Nodes
+
+Synthetic graph nodes created by the graph builder to organize the hierarchy:
+
+* **Repository** — the repository root
+* **Workspace** — a workspace within the repository
+* **File** — a source file containing extracted entities
+
+Structural nodes use [`StructuralNodeKind`] to identify their type
+(an enum with `Repository`, `Workspace`, `File` variants—never a
+bare string). They use [`GraphNodeId::Structural`] with
+[`StructuralNodeId`] as their identity, and carry
+[`GraphEvidence::Structural`].
+
+### Entity Nodes
+
+Nodes created from extracted facts. Each extracted fact becomes one node:
+
 * Module
 * Function
-* Method
 * Struct
 * Enum
 * Trait
-* Interface
-* Class
-* Variable
+* ImplBlock
+* TypeAlias
 * Constant
-* Macro
-* Manifest
-* Configuration file
-* Test
+* Static
+* Import
+* Export
+
+Entity nodes use [`GraphNodeId::Entity`] wrapping the existing
+[`EntityId`], and carry [`GraphEvidence::Source`] with the original
+parser-produced evidence.
 
 Every node has a unique identity.
 
@@ -162,7 +184,13 @@ Every node has a unique identity.
 
 Every node is assigned a stable identifier.
 
-The identifier exists independently of presentation.
+| Node Category | Identity Type | Construction |
+|---------------|---------------|-------------|
+| Structural | `GraphNodeId::Structural(StructuralNodeId)` | Hash of (`StructuralNodeKind`, path, name) in a separate namespace |
+| Entity | `GraphNodeId::Entity(EntityId)` | Hash of (language, kind, path, name, byte_offset) |
+
+Structural and entity identities cannot collide — they use separate hash
+namespaces.
 
 Stable identities allow:
 
@@ -171,7 +199,7 @@ Stable identities allow:
 * graph diffing
 * external references
 
-Node identifiers should remain stable whenever repository changes permit.
+Node identifiers remain stable whenever repository changes permit.
 
 ---
 
@@ -183,18 +211,11 @@ Common metadata includes:
 
 * identifier
 * node kind
-* language
-* qualified name
 * display name
-* source file
-* source span
 * visibility
-* attributes
+* source documentation
 
-Individual node types may expose additional metadata.
-
-For example, a function node may include parameters and return type, while a
-manifest node may include package metadata.
+Structural nodes carry minimal metadata (no visibility, no documentation).
 
 ---
 
@@ -211,38 +232,14 @@ Every relationship has:
 
 Relationships are directed.
 
-```mermaid
-flowchart LR
+### Relationship Types
 
-A["Function: login()"]
-
-B["Function: validate_token()"]
-
-A -- calls --> B
-```
-
-Relationships represent deterministic facts extracted from the repository.
-
----
-
-## Relationship Types
-
-The graph distinguishes between relationship semantics.
-
-Examples include:
-
-* contains
-* defines
-* declares
-* imports
-* exports
-* references
-* calls
-* implements
-* inherits
-* depends_on
-* tests
-* documents
+| Type | Source | Target | Description |
+|------|--------|--------|-------------|
+| `Contains` | Repository | Workspace | Structural containment |
+| `Contains` | Workspace | File | Structural containment |
+| `Declares` | File | Entity | A file declares an extracted entity |
+| `Defines` | Trait/ImplBlock | Function | An entity defines a sub-entity |
 
 Relationship meanings never overlap.
 
@@ -256,17 +253,23 @@ Evidence is a first-class concept.
 
 Every node and every relationship must be backed by repository evidence.
 
-Examples include:
+Two evidence kinds exist:
 
-* source locations
-* manifest entries
-* configuration files
+| Evidence Kind | Used By | Content |
+|---------------|---------|---------|
+| `GraphEvidence::Source(Evidence)` | Entity nodes, declares/defines relationships | Parser-produced source location (file, byte range, line/column, language) |
+| `GraphEvidence::Structural(StructuralEvidence)` | Structural nodes, contains relationships | Structured metadata: repository root, workspace name, or file path |
 
-Typical evidence:
+`StructuralEvidence` is a typed enum with three variants:
 
-```text
-src/auth/login.rs:42
-```
+| Variant | Fields | Used For |
+|---------|--------|----------|
+| `Repository` | `root: PathBuf` | Repository node, contains relationships from repository |
+| `Workspace` | `name: String` | Workspace node, contains relationships from workspace |
+| `File` | `path: PathBuf` | File node |
+
+The human-readable description is derived from the structured variant,
+not stored as a free-form string.
 
 Evidence is never inferred by an LLM.
 
@@ -276,44 +279,81 @@ If evidence cannot be established, the graph element must not exist.
 
 ## Graph Construction
 
-Graph construction follows a deterministic sequence.
+Graph construction follows a deterministic sequence implemented by
+[`GraphBuilder`].
 
 ```mermaid
 flowchart LR
 
-Repository
+RepositoryFacts
+RepositoryContext
 
---> Parsing
+--> CreateStructuralNodes
 
---> Fact Extraction
+--> CreateEntityNodes
 
---> Normalization
+--> SortNodes
 
---> Graph Construction
+--> BuildNodeIndex
 
---> Validation
+--> BuildRelationships
 
---> Knowledge Graph
+--> BuildEdgeIndex
+
+--> Validate
+
+--> KnowledgeGraph
 ```
+
+The builder is decomposed into focused sub-modules:
+
+| Module | Responsibility |
+|---------|---------------|
+| `builder/mod.rs` | Orchestration — coordinates the build pipeline via [`GraphBuildState`] |
+| `builder/context.rs` | [`RepositoryContext`] — sole owner of temporary repository metadata derivation (replaced by Acquisition in Stage 5). **External** to the builder. |
+| `builder/structural.rs` | Structural nodes (repository, workspace, file) — consumes context only; returns [`StructuralLookup`] |
+| `builder/node_builder.rs` | Entity nodes (one per extracted fact) |
+| `builder/relationship_builder.rs` | Relationship derivation — consumes [`StructuralLookup`], never hashes structural IDs independently |
+| `builder/identity.rs` | Graph-level identity and evidence construction |
+| `builder/index.rs` | Lookup and edge index structures |
 
 Each stage has a single responsibility.
 
 Graph construction never performs interpretation.
 
+### Ownership Boundaries
+
+* [`RepositoryContext`] is constructed **externally** and passed into
+  [`GraphBuilder::build`].
+* [`GraphBuilder`] performs **zero repository discovery** — it only
+  consumes metadata.
+* Structural IDs are generated **exactly once** by `structural` and
+  cached in [`StructuralLookup`]. [`RelationshipBuilder`] references
+  existing IDs rather than recomputing them.
+* [`GraphBuildState`] accumulates all builder state during construction,
+  replacing independent vectors and maps.
+
 ---
 
 ## Graph Validation
 
-Before becoming available, every graph is validated.
+Before becoming available, every graph is validated by [`GraphValidator`].
 
-Validation includes:
+Validation ensures:
 
-* duplicate detection
-* orphan detection
-* invalid relationships
-* missing metadata
-* malformed evidence
-* structural consistency
+* Exactly one repository node exists
+* Exactly one workspace node exists
+* No duplicate node IDs (safety net — builder guarantees uniqueness)
+* Relationship endpoints refer to existing nodes
+* Structural nodes have structural identity and structural evidence
+* Entity nodes have entity identity and source evidence
+
+Evidence completeness is enforced at the type level — structurally invalid
+combinations cannot be constructed even in release builds.
+[`Node::structural`] and [`Node::entity`] accept concrete inner types
+that guarantee the correct identity/evidence pairing.
+[`Relationship::structural`] and [`Relationship::with_source`] provide
+the same guarantee for edges.
 
 Invalid graphs are rejected.
 
@@ -349,16 +389,20 @@ This guarantees deterministic behavior and thread safety.
 
 ## Graph Queries
 
-Consumers interact with the graph through a query API.
+Consumers interact with the graph through the public API.
 
-Low-level operations include:
+Available operations:
 
-* locate node by identifier
-* locate node by name
-* enumerate relationships for a node
-* traverse inbound relationships
-* traverse outbound relationships
-* filter by node type
+| Method | Complexity | Description |
+|--------|-----------|-------------|
+| `node_by_id(id)` | O(log n) | Look up a node by [`GraphNodeId`] |
+| `nodes()` | O(1) | All nodes in deterministic order |
+| `relationships()` | O(1) | All relationships in deterministic order |
+| `node_count()` | O(1) | Number of nodes |
+| `relationship_count()` | O(1) | Number of relationships |
+| `nodes_by_kind(kind)` | O(n) | Filter nodes by [`NodeKind`] |
+| `outgoing(id)` | O(1) amortized | Relationships from a node |
+| `incoming(id)` | O(1) amortized | Relationships to a node |
 
 Higher-level query operations (intent resolution, context assembly) belong to the Query Engine.
 
@@ -471,5 +515,5 @@ Any implementation that violates these constraints is considered incorrect.
 ## See Also
 
 - [DESIGN.md](../DESIGN.md) — System design and invariants
+- [PIPELINE.md](PIPELINE.md) — Pipeline stage details
 - [Documentation index](README.md) — All documents
-

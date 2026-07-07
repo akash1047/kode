@@ -10,6 +10,7 @@ workspace = true
 
 [dependencies]
 kode-acquisition = { path = "../acquisition" }
+kode-common = { path = "../common" }
 tree-sitter = "0.26"
 tree-sitter-rust = "0.24"
 thiserror.workspace = true

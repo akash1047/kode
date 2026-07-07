@@ -9,3 +9,7 @@ license.workspace = true
 workspace = true
 
 [dependencies]
+kode-acquisition = { path = "../acquisition" }
+kode-analysis = { path = "../analysis" }
+kode-common = { path = "../common" }
+thiserror.workspace = true
