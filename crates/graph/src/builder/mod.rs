@@ -193,8 +193,7 @@ impl GraphBuilder {
         state.build_node_index()?;
 
         // --- Step 5: Build relationships ---
-        state.relationships =
-            build_relationships(facts, &state.node_by_id, ctx, &structural);
+        state.relationships = build_relationships(facts, &state.node_by_id, ctx, &structural);
 
         // --- Step 6: Build edge index structures ---
         state.build_edge_index();

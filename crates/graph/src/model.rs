@@ -68,6 +68,23 @@ impl std::fmt::Display for GraphNodeId {
     }
 }
 
+impl std::str::FromStr for GraphNodeId {
+    type Err = String;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        if let Some(hex) = s.strip_prefix("structural:") {
+            let v = u64::from_str_radix(hex, 16)
+                .map_err(|_| format!("invalid structural node ID: {s}"))?;
+            Ok(GraphNodeId::Structural(StructuralNodeId::from_u64(v)))
+        } else if let Some(hex) = s.strip_prefix("entity:") {
+            let v =
+                u64::from_str_radix(hex, 16).map_err(|_| format!("invalid entity node ID: {s}"))?;
+            Ok(GraphNodeId::Entity(EntityId::from_u64(v)))
+        } else {
+            Err(format!("invalid graph node ID: {s}"))
+        }
+    }
+}
+
 /// Discriminator for synthetic structural node kinds.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum StructuralNodeKind {
@@ -113,6 +130,17 @@ impl StructuralNodeId {
     /// Return the raw u64 hash value.
     pub fn as_u64(&self) -> u64 {
         self.0
+    }
+
+    /// Create a `StructuralNodeId` from a raw u64 value.
+    ///
+    /// # Safety
+    ///
+    /// The caller must ensure the value was produced by
+    /// [`StructuralNodeId::from_parts`] or [`StructuralNodeId::as_u64`].
+    /// This constructor does not recompute the hash.
+    pub fn from_u64(value: u64) -> Self {
+        Self(value)
     }
 }
 
@@ -247,6 +275,29 @@ impl std::fmt::Display for NodeKind {
     }
 }
 
+impl std::str::FromStr for NodeKind {
+    type Err = String;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "repository" => Ok(NodeKind::Repository),
+            "workspace" => Ok(NodeKind::Workspace),
+            "file" => Ok(NodeKind::File),
+            "module" => Ok(NodeKind::Module),
+            "function" => Ok(NodeKind::Function),
+            "struct" => Ok(NodeKind::Struct),
+            "enum" => Ok(NodeKind::Enum),
+            "trait" => Ok(NodeKind::Trait),
+            "impl_block" => Ok(NodeKind::ImplBlock),
+            "type_alias" => Ok(NodeKind::TypeAlias),
+            "constant" => Ok(NodeKind::Constant),
+            "static" => Ok(NodeKind::Static),
+            "import" => Ok(NodeKind::Import),
+            "export" => Ok(NodeKind::Export),
+            other => Err(format!("unknown node kind: {other}")),
+        }
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Relationship kind
 // ---------------------------------------------------------------------------
@@ -279,6 +330,18 @@ impl RelationshipKind {
 impl std::fmt::Display for RelationshipKind {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str(self.as_str())
+    }
+}
+
+impl std::str::FromStr for RelationshipKind {
+    type Err = String;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "contains" => Ok(RelationshipKind::Contains),
+            "declares" => Ok(RelationshipKind::Declares),
+            "defines" => Ok(RelationshipKind::Defines),
+            other => Err(format!("unknown relationship kind: {other}")),
+        }
     }
 }
 
@@ -485,6 +548,32 @@ impl Relationship {
 }
 
 // ---------------------------------------------------------------------------
+// Graph version
+// ---------------------------------------------------------------------------
+
+/// Graph format version — independent of crate version or application version.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct GraphVersion {
+    pub major: u16,
+    pub minor: u16,
+}
+
+impl GraphVersion {
+    pub const fn new(major: u16, minor: u16) -> Self {
+        Self { major, minor }
+    }
+
+    /// Current graph format version for newly constructed graphs.
+    pub const CURRENT: GraphVersion = GraphVersion::new(1, 0);
+}
+
+impl std::fmt::Display for GraphVersion {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}.{}", self.major, self.minor)
+    }
+}
+
+// ---------------------------------------------------------------------------
 // KnowledgeGraph — immutable, validated in-memory graph
 // ---------------------------------------------------------------------------
 
@@ -552,6 +641,30 @@ impl KnowledgeGraph {
             outgoing,
             incoming,
         }
+    }
+
+    /// Construct a [`KnowledgeGraph`] from nodes and relationships,
+    /// computing the index structures internally.
+    ///
+    /// Uses [`crate::builder::index::build_node_index`] and
+    /// [`crate::builder::index::build_edge_index`] to reconstruct the
+    /// lookup and traversal indexes.
+    pub fn from_nodes_and_relationships(
+        nodes: Vec<Node>,
+        relationships: Vec<Relationship>,
+    ) -> Result<Self, Vec<crate::validator::ValidationError>> {
+        let node_by_id = crate::builder::index::build_node_index(&nodes)?;
+        let n = nodes.len();
+        let (outgoing, incoming) =
+            crate::builder::index::build_edge_index(n, &relationships, &node_by_id);
+
+        Ok(Self {
+            nodes,
+            relationships,
+            node_by_id,
+            outgoing,
+            incoming,
+        })
     }
 
     // ------------------------------------------------------------------

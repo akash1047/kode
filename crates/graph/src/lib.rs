@@ -68,10 +68,19 @@ use thiserror as _;
 
 pub mod builder;
 pub mod model;
+pub mod serialization;
 pub mod validator;
 
-pub use builder::GraphBuilder;
 pub use builder::context::RepositoryContext;
+pub use builder::GraphBuilder;
 pub use model::*;
+pub use serialization::{
+    dtos_to_graph, graph_to_dtos, NodeDto, RelationshipDto, SerializationError,
+};
 pub use validator::GraphValidator;
 pub use validator::ValidationError;
+
+// Re-export types from analysis that are part of the graph's public API
+pub use kode_analysis::extraction::{EntityId, Evidence, Visibility};
+// Re-export Language from acquisition as it is part of evidence construction
+pub use kode_acquisition::Language;

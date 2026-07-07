@@ -35,6 +35,17 @@ impl EntityId {
     pub fn as_u64(&self) -> u64 {
         self.0
     }
+
+    /// Create an `EntityId` from a raw u64 value.
+    ///
+    /// # Safety
+    ///
+    /// The caller must ensure the value was produced by
+    /// [`EntityId::from_location`] or [`EntityId::as_u64`].
+    /// This constructor does not recompute the hash.
+    pub fn from_u64(value: u64) -> Self {
+        Self(value)
+    }
 }
 
 impl Ord for EntityId {
@@ -135,6 +146,34 @@ pub enum Visibility {
     Super,
     Restricted(String),
     Private,
+}
+
+impl std::fmt::Display for Visibility {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Visibility::Public => write!(f, "public"),
+            Visibility::Crate => write!(f, "crate"),
+            Visibility::Super => write!(f, "super"),
+            Visibility::Private => write!(f, "private"),
+            Visibility::Restricted(s) => write!(f, "restricted({s})"),
+        }
+    }
+}
+
+impl std::str::FromStr for Visibility {
+    type Err = String;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "public" => Ok(Visibility::Public),
+            "crate" => Ok(Visibility::Crate),
+            "super" => Ok(Visibility::Super),
+            "private" => Ok(Visibility::Private),
+            r if r.starts_with("restricted(") && r.ends_with(')') => {
+                Ok(Visibility::Restricted(r[11..r.len() - 1].to_string()))
+            }
+            other => Err(format!("unknown visibility: {other}")),
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------

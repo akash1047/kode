@@ -90,11 +90,8 @@ pub fn push_structural_nodes(ctx: &RepositoryContext, nodes: &mut Vec<Node>) -> 
     // File nodes
     let mut file_by_path = BTreeMap::new();
     for file_path in ctx.source_files() {
-        let file_id = GraphNodeId::Structural(structural_id(
-            StructuralNodeKind::File,
-            file_path,
-            "",
-        ));
+        let file_id =
+            GraphNodeId::Structural(structural_id(StructuralNodeKind::File, file_path, ""));
         nodes.push(Node::structural(
             structural_id(StructuralNodeKind::File, file_path, ""),
             NodeKind::File,

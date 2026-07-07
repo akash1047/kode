@@ -12,4 +12,6 @@ workspace = true
 kode-acquisition = { path = "../acquisition" }
 kode-analysis = { path = "../analysis" }
 kode-common = { path = "../common" }
+serde = { workspace = true }
+serde_json = { workspace = true }
 thiserror.workspace = true

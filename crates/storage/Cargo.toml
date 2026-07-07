@@ -9,3 +9,13 @@ license.workspace = true
 workspace = true
 
 [dependencies]
+kode-graph = { path = "../graph" }
+kode-common = { path = "../common" }
+serde = { workspace = true }
+serde_json = { workspace = true }
+rusqlite = { version = "0.32", features = ["bundled"] }
+thiserror = { workspace = true }
+
+[dev-dependencies]
+kode-analysis = { path = "../analysis" }
+kode-acquisition = { path = "../acquisition" }

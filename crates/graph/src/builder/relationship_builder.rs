@@ -68,9 +68,10 @@ pub fn build_relationships(
 
     // Workspace → File (contains)
     for file_path in ctx.source_files() {
-        let file_id = structural.file_by_path.get(file_path).expect(
-            "file path must have a corresponding structural node in the lookup",
-        );
+        let file_id = structural
+            .file_by_path
+            .get(file_path)
+            .expect("file path must have a corresponding structural node in the lookup");
         relationships.push(Relationship::structural(
             workspace_id,
             *file_id,
@@ -84,9 +85,10 @@ pub fn build_relationships(
 
     // File → Entity (declares)
     for entity_ref in entity_refs(facts) {
-        let file_id = structural.file_by_path.get(&entity_ref.source_file).expect(
-            "entity source file must have a corresponding structural file node",
-        );
+        let file_id = structural
+            .file_by_path
+            .get(&entity_ref.source_file)
+            .expect("entity source file must have a corresponding structural file node");
         relationships.push(Relationship::with_source(
             *file_id,
             entity_ref.id,
