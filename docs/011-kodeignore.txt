@@ -1,0 +1,66 @@
+```text
+Specification: .kodeignore Support
+
+The traversal implementation shall support a project-specific ignore file named `.kodeignore`.
+
+`.kodeignore` uses the same syntax and matching behavior as `.gitignore`, including nested files and standard Git ignore patterns.
+
+Requirements:
+- Discover and apply `.kodeignore` files during directory traversal.
+- If a directory contains a `.kodeignore`, the `.gitignore` file in the same directory shall be ignored.
+- Directories without a `.kodeignore` shall use `.gitignore`.
+- A `.kodeignore` applies to its directory and all descendants until another `.kodeignore` is encountered.
+- Support nested `.kodeignore` files.
+- Skip files and directories ignored by the effective ignore rules.
+- Do not recurse into ignored directories.
+
+Expected Behavior:
+Traversal shall evaluate ignore rules using the nearest applicable `.kodeignore`; otherwise, it shall use `.gitignore`. Only paths not ignored by the effective rules shall be returned.
+
+Scenarios:
+
+1. No `.kodeignore`
+
+/
+├── .gitignore
+
+Result:
+- `.gitignore` is used.
+
+2. Root `.kodeignore`
+
+/
+├── .gitignore
+├── .kodeignore
+
+Result:
+- Root `.gitignore` is ignored.
+- Root `.kodeignore` is used.
+
+3. Nested `.kodeignore`
+
+/
+├── .gitignore
+└── src/
+    ├── .gitignore
+    └── .kodeignore
+
+Result:
+- Root `.gitignore` applies outside `src/`.
+- Within `src/`, `.gitignore` is ignored.
+- `src/.kodeignore` is used for `src/` and its descendants.
+
+4. Nested `.kodeignore` Override
+
+/
+├── .gitignore
+└── src/
+    ├── .kodeignore
+    └── test/
+        └── .kodeignore
+
+Result:
+- Root `.gitignore` applies outside `src/`.
+- `src/.kodeignore` applies within `src/`.
+- `test/.kodeignore` overrides `src/.kodeignore` for `test/` and its descendants.
+```

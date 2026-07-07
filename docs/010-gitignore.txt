@@ -1,0 +1,14 @@
+Specification: Directory Traversal with .gitignore Support
+
+The directory traversal implementation shall respect Git ignore rules during traversal.
+
+Requirements:
+- Traverse directories recursively.
+- Discover and apply .gitignore files in the current and parent directories.
+- Support standard Git ignore pattern syntax.
+- Skip files and directories matching ignore rules.
+- Do not recurse into ignored directories.
+- Return only paths that are not ignored.
+
+Expected Behavior:
+Traversal results shall be consistent with Git's ignore semantics for supported patterns, including nested .gitignore files and negated rules.
