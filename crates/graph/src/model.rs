@@ -315,6 +315,8 @@ pub enum RelationshipKind {
     Declares,
     /// An entity defines a sub-entity (e.g. trait → method).
     Defines,
+    /// One entity calls another (resolved during analysis).
+    Calls,
 }
 
 impl RelationshipKind {
@@ -323,6 +325,7 @@ impl RelationshipKind {
             RelationshipKind::Contains => "contains",
             RelationshipKind::Declares => "declares",
             RelationshipKind::Defines => "defines",
+            RelationshipKind::Calls => "calls",
         }
     }
 }
@@ -340,6 +343,7 @@ impl std::str::FromStr for RelationshipKind {
             "contains" => Ok(RelationshipKind::Contains),
             "declares" => Ok(RelationshipKind::Declares),
             "defines" => Ok(RelationshipKind::Defines),
+            "calls" => Ok(RelationshipKind::Calls),
             other => Err(format!("unknown relationship kind: {other}")),
         }
     }

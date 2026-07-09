@@ -1,6 +1,8 @@
+pub mod cache;
 pub mod files;
 pub mod scan;
 pub mod status;
+pub mod symbols;
 
 use kode_acquisition::{RepositorySnapshot, WorkspaceKind};
 

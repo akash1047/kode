@@ -43,26 +43,32 @@ This document describes the evolution of **kode** organized by milestone rather 
 
 | | |
 |---|---|
-| Status | 🔄 In Progress |
-| Target | Graph analysis algorithms, query execution, MCP server |
-
-Planned deliverables:
-
-- Call graph analysis — full resolution of function call relationships across languages
-- Symbol search — fast, fuzzy symbol lookup across the Knowledge Graph
-- Cache improvements — richer relationships in the incremental cache
-- Graph export — export the Knowledge Graph to standard formats (GraphML, DOT, JSON)
-- CLI refinements — improved output formatting, filtering, and pagination
+| Status | ✓ Complete |
+| Delivered | Pipeline wiring (extraction→graph→storage), query engine with symbol search and evidence verification, call graph relationship kind, graph export (DOT, GraphML), CLI refinements (symbols, query, cache status/clear, config init/get/set) |
 
 ---
 
-## Near Term
+## Current Milestone
 
+### Milestone 6 — Advanced Analysis
+
+| | |
+|---|---|
+| Status | 🔄 In Progress |
+| Target | Cache improvements, MCP server, deeper graph algorithms |
+
+Planned deliverables:
+
+- Cache improvements — richer relationships in the incremental cache
+- MCP server — expose query engine through the Model Context Protocol
 - Architecture visualization — render the Knowledge Graph as interactive diagrams
 - Impact analysis — determine what entities are affected by a given change
+
+## Near Term
+
+- Architecture metrics — fan-in, fan-out, cohesion, and instability metrics
 - Dead code detection — identify unused symbols with evidence
 - Dependency analysis — compute dependency trees and detect cycles
-- Architecture metrics — fan-in, fan-out, cohesion, and instability metrics
 - Multi-repository indexing — index and query across related repositories
 - LSP integration — expose repository knowledge through the Language Server Protocol
 

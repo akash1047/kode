@@ -2,7 +2,11 @@ use std::path::Path;
 
 use clap::{Parser, Subcommand};
 use kode_acquisition::Language;
+use kode_graph as _;
+use kode_query::QueryEngine;
+use kode_storage::{RepositoryStorage, SqliteBackend};
 
+mod config;
 mod formatter;
 mod presenter;
 
@@ -227,6 +231,59 @@ fn handle_files(
     ))
 }
 
+fn open_storage(path: Option<&str>) -> Result<RepositoryStorage, Box<dyn std::error::Error>> {
+    let repo_path = path.unwrap_or(".");
+    let path = Path::new(repo_path);
+    let absolute = if path.is_relative() {
+        std::env::current_dir()?.join(path)
+    } else {
+        path.to_path_buf()
+    };
+    let db_path = absolute.join(".kode").join("cache.db");
+
+    if !db_path.exists() {
+        return Err("Repository has not been scanned yet. Run `kode scan` first.".into());
+    }
+
+    let backend = SqliteBackend::open(&db_path)?;
+    let repo_id = absolute.display().to_string();
+    Ok(RepositoryStorage::open(Box::new(backend), &repo_id)?)
+}
+
+fn handle_symbols(
+    path: Option<&str>,
+    _language: Option<&str>,
+) -> Result<presenter::symbols::SymbolsView, Box<dyn std::error::Error>> {
+    let storage = open_storage(path)?;
+    let engine = QueryEngine::new(storage);
+    let results = engine.search_symbols("", None)?;
+    Ok(presenter::symbols::SymbolsView::from_symbols(&results))
+}
+
+fn handle_query(
+    path: Option<&str>,
+    query: &str,
+) -> Result<presenter::symbols::SymbolsView, Box<dyn std::error::Error>> {
+    let storage = open_storage(path)?;
+    let engine = QueryEngine::new(storage);
+    let results = engine.search_symbols(query, None)?;
+    Ok(presenter::symbols::SymbolsView::from_symbols(&results))
+}
+
+fn handle_cache_status(
+    path: Option<&str>,
+) -> Result<presenter::cache::CacheStatusView, Box<dyn std::error::Error>> {
+    let storage = open_storage(path)?;
+    let meta = storage.metadata()?;
+    Ok(presenter::cache::CacheStatusView::from_metadata(&meta))
+}
+
+fn handle_cache_clear(path: Option<&str>) -> Result<(), Box<dyn std::error::Error>> {
+    let mut storage = open_storage(path)?;
+    storage.clear()?;
+    Ok(())
+}
+
 fn main() {
     let cli = Cli::parse();
 
@@ -240,42 +297,49 @@ fn main() {
         }
         Commands::Files { language, .. } => handle_files(cli.repo.as_deref(), language.as_deref())
             .map(|o| print!("{}", formatter::files::format(&o))),
-        Commands::Symbols { .. } => {
-            println!("{}", placeholder_message("Symbol exploration"));
-            Ok(())
-        }
-        Commands::Query { .. } => {
-            println!("{}", placeholder_message("Querying"));
-            Ok(())
-        }
+        Commands::Symbols { language } => handle_symbols(cli.repo.as_deref(), language.as_deref())
+            .map(|o| print!("{}", formatter::symbols::format(&o))),
+        Commands::Query { query } => handle_query(cli.repo.as_deref(), query)
+            .map(|o| print!("{}", formatter::symbols::format(&o))),
         Commands::Chat { .. } => {
             println!("{}", placeholder_message("Chat"));
             Ok(())
         }
-        Commands::Cache { command } => {
-            match command {
-                CacheCommands::Status => {
-                    println!("{}", placeholder_message("Cache status"));
-                }
-                CacheCommands::Clear => {
-                    println!("{}", placeholder_message("Cache clearing"));
-                }
-            }
-            Ok(())
-        }
+        Commands::Cache { command } => match command {
+            CacheCommands::Status => handle_cache_status(cli.repo.as_deref())
+                .map(|o| print!("{}", formatter::cache::format(&o))),
+            CacheCommands::Clear => handle_cache_clear(cli.repo.as_deref())
+                .map(|_| println!("Cache cleared successfully.")),
+        },
         Commands::Config { command } => {
+            let repo_path = cli.repo.as_deref().unwrap_or(".");
+            let path = std::path::Path::new(repo_path);
             match command {
                 ConfigCommands::Init => {
-                    println!("{}", placeholder_message("Configuration initialization"));
+                    match config::init(path) {
+                        Ok(p) => println!("Configuration initialized at {}", p.display()),
+                        Err(e) => eprintln!("error: {e}"),
+                    }
+                    Ok(())
                 }
-                ConfigCommands::Get { .. } => {
-                    println!("{}", placeholder_message("Configuration get"));
+                ConfigCommands::Get { key } => {
+                    match config::Config::load(path) {
+                        Ok(cfg) => match cfg.get(key) {
+                            Some(val) => println!("{val}"),
+                            None => eprintln!("key '{key}' not found"),
+                        },
+                        Err(e) => eprintln!("error: {e}"),
+                    }
+                    Ok(())
                 }
-                ConfigCommands::Set { .. } => {
-                    println!("{}", placeholder_message("Configuration set"));
+                ConfigCommands::Set { key, value } => {
+                    match config::set(path, key, value) {
+                        Ok(()) => println!("set {key} = {value}"),
+                        Err(e) => eprintln!("error: {e}"),
+                    }
+                    Ok(())
                 }
             }
-            Ok(())
         }
         Commands::Mcp { command } => {
             match command {

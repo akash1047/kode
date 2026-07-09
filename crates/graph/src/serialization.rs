@@ -171,8 +171,7 @@ pub fn dtos_to_graph(
 
 fn dto_to_node(dto: NodeDto) -> Result<Node, SerializationError> {
     let id = GraphNodeId::from_str(&dto.id).map_err(SerializationError::InvalidNodeId)?;
-    let kind =
-        NodeKind::from_str(&dto.kind).map_err(SerializationError::UnknownNodeKind)?;
+    let kind = NodeKind::from_str(&dto.kind).map_err(SerializationError::UnknownNodeKind)?;
     let visibility = dto
         .visibility
         .as_deref()
@@ -194,10 +193,8 @@ fn dto_to_node(dto: NodeDto) -> Result<Node, SerializationError> {
 }
 
 fn dto_to_relationship(dto: RelationshipDto) -> Result<Relationship, SerializationError> {
-    let source =
-        GraphNodeId::from_str(&dto.source).map_err(SerializationError::InvalidNodeId)?;
-    let target =
-        GraphNodeId::from_str(&dto.target).map_err(SerializationError::InvalidNodeId)?;
+    let source = GraphNodeId::from_str(&dto.source).map_err(SerializationError::InvalidNodeId)?;
+    let target = GraphNodeId::from_str(&dto.target).map_err(SerializationError::InvalidNodeId)?;
     let kind = RelationshipKind::from_str(&dto.kind)
         .map_err(SerializationError::UnknownRelationshipKind)?;
 
@@ -268,6 +265,101 @@ fn dto_to_source_evidence(
             actual: "structural".into(),
         }),
     }
+}
+
+// ---------------------------------------------------------------------------
+// Graph export
+// ---------------------------------------------------------------------------
+
+/// Export the knowledge graph to DOT format.
+pub fn graph_to_dot(graph: &KnowledgeGraph) -> String {
+    let mut out = String::from("digraph KnowledgeGraph {\n");
+    out.push_str("  rankdir=LR;\n");
+    out.push_str("  node [shape=box, style=filled, fillcolor=lightyellow];\n\n");
+
+    for node in graph.nodes() {
+        let id = sanitize_dot_id(&node_id_str(node.id()));
+        let label = sanitize_dot_label(node.name());
+        out.push_str(&format!("  {id} [label=\"{label}\"];\n"));
+    }
+
+    out.push('\n');
+
+    for rel in graph.relationships() {
+        let src = sanitize_dot_id(&node_id_str(rel.source()));
+        let tgt = sanitize_dot_id(&node_id_str(rel.target()));
+        let label = rel.kind().as_str();
+        out.push_str(&format!("  {src} -> {tgt} [label=\"{label}\"];\n"));
+    }
+
+    out.push_str("}\n");
+    out
+}
+
+fn node_id_str(id: &GraphNodeId) -> String {
+    match id {
+        GraphNodeId::Structural(sid) => format!("structural:{}", sid.as_u64()),
+        GraphNodeId::Entity(eid) => format!("entity:{}", eid.as_u64()),
+    }
+}
+
+fn sanitize_dot_id(id: &str) -> String {
+    if id.contains(|c: char| !c.is_alphanumeric() && c != '_') {
+        format!("\"{}\"", id)
+    } else {
+        id.to_string()
+    }
+}
+
+fn sanitize_dot_label(label: &str) -> String {
+    label.replace('\"', "\\\"")
+}
+
+/// Export the knowledge graph to GraphML format.
+pub fn graph_to_graphml(graph: &KnowledgeGraph) -> String {
+    let mut out = String::from(
+        "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n\
+         <graphml xmlns=\"http://graphml.graphdrawing.org/xmlns\">\n",
+    );
+
+    // Node kind attribute
+    out.push_str("  <key id=\"kind\" for=\"node\" attr.name=\"kind\" attr.type=\"string\"/>\n");
+    out.push_str("  <key id=\"name\" for=\"node\" attr.name=\"name\" attr.type=\"string\"/>\n");
+    out.push_str("  <key id=\"label\" for=\"edge\" attr.name=\"label\" attr.type=\"string\"/>\n");
+    out.push_str("  <graph id=\"G\" edgedefault=\"directed\">\n");
+
+    for node in graph.nodes() {
+        let id = xml_escape(&node_id_str(node.id()));
+        let kind_escaped = xml_escape(&format!("{:?}", node.kind()));
+        let name_escaped = xml_escape(node.name());
+        let kind_data = format!("      <data key=\"kind\">{kind_escaped}</data>\n");
+        let name_data = format!("      <data key=\"name\">{name_escaped}</data>\n");
+        out.push_str(&format!(
+            "    <node id=\"{id}\">\n{kind_data}{name_data}    </node>\n",
+        ));
+    }
+
+    for rel in graph.relationships() {
+        let src = xml_escape(&node_id_str(rel.source()));
+        let tgt = xml_escape(&node_id_str(rel.target()));
+        let label_escaped = xml_escape(rel.kind().as_str());
+        let label_data = format!("      <data key=\"label\">{label_escaped}</data>\n");
+        out.push_str(&format!(
+            "    <edge source=\"{src}\" target=\"{tgt}\">\n{label_data}    </edge>\n",
+        ));
+    }
+
+    out.push_str("  </graph>\n");
+    out.push_str("</graphml>\n");
+    out
+}
+
+fn xml_escape(s: &str) -> String {
+    s.replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('\"', "&quot;")
+        .replace('\'', "&apos;")
 }
 
 #[cfg(test)]

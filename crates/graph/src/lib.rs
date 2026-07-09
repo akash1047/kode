@@ -62,7 +62,8 @@
 //!   new fields can be added without changing the public API shape.
 //! - New [`NodeKind`] variants can be added as new language entity kinds
 //!   are introduced.
-//! - New [`RelationshipKind`] variants belong to later analysis stages.
+//! - New [`RelationshipKind`] variants belong to later analysis stages
+//!   (e.g. [`RelationshipKind::Calls`] is resolved during query.)
 
 use thiserror as _;
 
@@ -75,7 +76,8 @@ pub use builder::context::RepositoryContext;
 pub use builder::GraphBuilder;
 pub use model::*;
 pub use serialization::{
-    dtos_to_graph, graph_to_dtos, NodeDto, RelationshipDto, SerializationError,
+    dtos_to_graph, graph_to_dot, graph_to_dtos, graph_to_graphml, NodeDto, RelationshipDto,
+    SerializationError,
 };
 pub use validator::GraphValidator;
 pub use validator::ValidationError;
