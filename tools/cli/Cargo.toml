@@ -19,5 +19,9 @@ kode-app = { path = "../../services/app" }
 kode-graph = { path = "../../crates/graph" }
 kode-query = { path = "../../crates/query" }
 kode-storage = { path = "../../crates/storage" }
+rmcp = { version = "2", features = ["server", "transport-io", "transport-streamable-http-server", "schemars"] }
+serde_json = { workspace = true }
+tokio = { version = "1", features = ["full"] }
 thiserror = { workspace = true }
 toml = { workspace = true }
+

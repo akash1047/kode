@@ -8,6 +8,7 @@ use kode_storage::{RepositoryStorage, SqliteBackend};
 
 mod config;
 mod formatter;
+mod mcp;
 mod presenter;
 
 #[derive(Parser)]
@@ -191,6 +192,9 @@ enum McpCommands {
     Serve {
         #[arg(help = "Repository path")]
         path: String,
+
+        #[arg(long, help = "Port for HTTP transport (default: stdio)")]
+        port: Option<u16>,
     },
 }
 
@@ -343,8 +347,26 @@ fn main() {
         }
         Commands::Mcp { command } => {
             match command {
-                McpCommands::Serve { .. } => {
-                    println!("{}", placeholder_message("MCP server"));
+                McpCommands::Serve { path, port } => {
+                    let path = resolve_path(Some(Path::new(path.as_str())), cli.repo.as_deref())
+                        .to_string();
+                    let rt = tokio::runtime::Runtime::new();
+                    match rt {
+                        Ok(runtime) => {
+                            let result = match port {
+                                Some(p) => runtime.block_on(mcp::run_http(&path, *p)),
+                                None => runtime.block_on(mcp::run_stdio(&path)),
+                            };
+                            if let Err(e) = result {
+                                eprintln!("error: {}", e);
+                                std::process::exit(1);
+                            }
+                        }
+                        Err(e) => {
+                            eprintln!("error: failed to start tokio runtime: {}", e);
+                            std::process::exit(1);
+                        }
+                    }
                 }
             }
             Ok(())
@@ -561,8 +583,22 @@ mod tests {
         let cli = Cli::parse_from(["kode", "mcp", "serve", "."]);
         match &cli.command {
             Commands::Mcp { command } => {
-                let McpCommands::Serve { path } = command;
+                let McpCommands::Serve { path, port } = command;
                 assert_eq!(path, ".");
+                assert_eq!(*port, None);
+            }
+            _ => panic!("Expected Mcp command"),
+        }
+    }
+
+    #[test]
+    fn test_mcp_serve_with_port() {
+        let cli = Cli::parse_from(["kode", "mcp", "serve", ".", "--port", "3000"]);
+        match &cli.command {
+            Commands::Mcp { command } => {
+                let McpCommands::Serve { path, port } = command;
+                assert_eq!(path, ".");
+                assert_eq!(*port, Some(3000));
             }
             _ => panic!("Expected Mcp command"),
         }

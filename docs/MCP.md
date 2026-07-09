@@ -1,6 +1,6 @@
 # MCP
 
-> **Implementation status:** The MCP server has not been implemented yet. No MCP-related crate or file currently exists in the workspace. This document describes the target design.
+> **Implementation status:** The MCP server is implemented. Module at `tools/cli/src/mcp.rs` exposes 5 tools (find_symbol, search_symbols, get_symbol_details, symbols_by_kind, read_file) over stdio or HTTP transport via `rmcp` v2.
 
 This document describes the **MCP (Model Context Protocol)** integration in **kode**.
 
