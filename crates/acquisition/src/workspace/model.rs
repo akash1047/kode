@@ -7,8 +7,8 @@ use std::path::{Path, PathBuf};
 /// `Cargo.toml` within the member directory).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct WorkspaceMember {
-    pub(crate) relative_path: PathBuf,
-    pub(crate) manifest_path: PathBuf,
+    pub relative_path: PathBuf,
+    pub manifest_path: PathBuf,
 }
 
 impl WorkspaceMember {
@@ -47,7 +47,7 @@ pub enum WorkspaceKind {
 /// to determine manifest paths and project structure.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Workspace {
-    pub(crate) kind: WorkspaceKind,
+    pub kind: WorkspaceKind,
 }
 
 impl Workspace {

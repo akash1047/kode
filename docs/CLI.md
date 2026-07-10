@@ -48,6 +48,7 @@ kode
 | `-q, --quiet` | Suppress non-essential output |
 | `--json` | Machine-readable output |
 | `--no-color` | Disable colored output |
+| `--log-file <PATH>` | Write logs to file (default: .kode/logs/kode.log) |
 | `-h, --help` | Print help |
 | `-V, --version` | Print version |
 
@@ -119,7 +120,7 @@ kode query "<query>"
 
 ### chat
 
-Start an interactive repository assistant session. Planned — currently a placeholder handler.
+Start an interactive repository assistant session. Queries the LLM (OpenAI default) with code evidence from the knowledge graph.
 
 ```sh
 kode chat [OPTIONS]

@@ -37,11 +37,7 @@ pub async fn run_http(path: &str, port: u16) -> Result<(), Box<dyn std::error::E
 
 fn open_repo_storage(path: &str) -> Result<RepositoryStorage, Box<dyn std::error::Error>> {
     let path = Path::new(path);
-    let absolute = if path.is_relative() {
-        std::env::current_dir()?.join(path)
-    } else {
-        path.to_path_buf()
-    };
+    let absolute = path.canonicalize()?;
     let db_path = absolute.join(".kode").join("cache.db");
     if !db_path.exists() {
         return Err("Repository has not been scanned yet. Run `kode scan` first.".into());
@@ -346,6 +342,7 @@ mod tests {
     use super::*;
     use kode_storage::SqliteBackend;
     use rmcp::model::CallToolRequestParams;
+    use std::path::PathBuf;
 
     fn make_handler_with_empty_graph() -> KodeHandler {
         use kode_graph::KnowledgeGraph;
@@ -482,5 +479,123 @@ mod tests {
         let request = make_request("read_file", JsonObject::new());
         let result = handler.handle_tool(request);
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_format_symbol_structure() {
+        let sym = kode_query::SymbolResult {
+            name: "foo".into(),
+            kind: kode_graph::NodeKind::Function,
+            file_path: PathBuf::from("src/main.rs"),
+            start_line: 10,
+            start_column: 1,
+            end_line: 20,
+            end_column: 5,
+            verified: true,
+        };
+        let json = format_symbol(&sym);
+        assert_eq!(json["name"], "foo");
+        assert_eq!(json["kind"], "function");
+        assert!(json["verified"].as_bool().unwrap());
+        assert_eq!(json["start_line"], 10);
+    }
+
+    #[test]
+    fn test_format_symbol_unverified() {
+        let sym = kode_query::SymbolResult {
+            name: "Bar".into(),
+            kind: kode_graph::NodeKind::Struct,
+            file_path: PathBuf::from("lib.rs"),
+            start_line: 1,
+            start_column: 0,
+            end_line: 5,
+            end_column: 0,
+            verified: false,
+        };
+        let json = format_symbol(&sym);
+        assert!(!json["verified"].as_bool().unwrap());
+    }
+
+    #[test]
+    fn test_to_rmcp_error_contains_message() {
+        let err =
+            kode_query::QueryError::Storage(kode_storage::StorageError::Backend("db error".into()));
+        let error_data = to_rmcp_error(err);
+        assert!(error_data.message.contains("db error"));
+    }
+
+    #[test]
+    fn test_to_json_object_with_object() {
+        let value = serde_json::json!({"key": "val"});
+        let obj = to_json_object(value);
+        assert_eq!(obj.get("key").unwrap().as_str().unwrap(), "val");
+    }
+
+    #[test]
+    fn test_to_json_object_with_non_object_returns_empty() {
+        let value = serde_json::json!("string");
+        let obj = to_json_object(value);
+        assert!(obj.is_empty());
+    }
+
+    #[test]
+    fn test_get_symbol_details_missing_name_returns_error() {
+        let handler = make_handler_with_empty_graph();
+        let request = make_request("get_symbol_details", JsonObject::new());
+        let result = handler.handle_tool(request);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_read_file_with_line_range() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let file_path = dir.path().join("test.txt");
+        std::fs::write(&file_path, "line1\nline2\nline3\nline4\nline5\n").unwrap();
+
+        let handler = make_handler_with_empty_graph();
+        let mut args = JsonObject::new();
+        args.insert(
+            "path".into(),
+            serde_json::Value::String(file_path.to_string_lossy().into()),
+        );
+        args.insert("start_line".into(), serde_json::Value::Number(2.into()));
+        args.insert("end_line".into(), serde_json::Value::Number(4.into()));
+        let request = make_request("read_file", args);
+        let result = handler.handle_tool(request).unwrap();
+        let text = result.content.first().unwrap().as_text().unwrap();
+        assert_eq!(text.text, "line2\nline3\nline4");
+    }
+
+    #[test]
+    fn test_read_file_start_line_beyond_content() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let file_path = dir.path().join("short.txt");
+        std::fs::write(&file_path, "hello").unwrap();
+
+        let handler = make_handler_with_empty_graph();
+        let mut args = JsonObject::new();
+        args.insert(
+            "path".into(),
+            serde_json::Value::String(file_path.to_string_lossy().into()),
+        );
+        args.insert("start_line".into(), serde_json::Value::Number(100.into()));
+        let request = make_request("read_file", args);
+        let result = handler.handle_tool(request).unwrap();
+        let text = result.content.first().unwrap().as_text().unwrap();
+        assert_eq!(text.text, "");
+    }
+
+    #[test]
+    fn test_search_symbols_success_returns_array() {
+        let handler = make_handler_with_empty_graph();
+        let mut args = JsonObject::new();
+        args.insert(
+            "query".into(),
+            serde_json::Value::String("nonexistent".into()),
+        );
+        let request = make_request("search_symbols", args);
+        let result = handler.handle_tool(request).unwrap();
+        let text = result.content.first().unwrap().as_text().unwrap();
+        assert_eq!(text.text, "[]");
     }
 }

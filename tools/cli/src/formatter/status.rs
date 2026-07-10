@@ -1,25 +1,54 @@
 use crate::presenter::status::StatusView;
 
+use super::style;
+
 pub fn format(view: &StatusView) -> String {
-    format!(
-        "Repository\n\
-         \x20 Root: {root}\n\
-         \x20 Workspace: {workspace}\n\
-         \n\
-         \x20 Files: {files}\n\
-         \x20 Languages: {langs}\n\
-         \n\
-         \x20 Parsed:   {parsed:>6}\n\
-         \x20 Skipped:  {skipped:>6}\n\
-         \x20 Recovered:{recovered:>6}\n\
-         \x20 Failed:   {failed:>6}\n",
-        root = view.repository_root,
-        workspace = view.workspace,
-        files = view.files,
-        langs = view.languages,
-        parsed = view.parsed,
-        recovered = view.recovered,
-        skipped = view.skipped,
-        failed = view.failed,
-    )
+    let mut out = style::header("status");
+    out.push_str(&format!(
+        "  ● {} — {} — {}\n  ● {} files · {} parsed · {} recovered · {} skipped · {} failed\n",
+        view.repository_root,
+        view.workspace,
+        view.languages,
+        view.files,
+        view.parsed,
+        view.recovered,
+        view.skipped,
+        view.failed,
+    ));
+    out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::presenter::status::StatusView;
+
+    fn view() -> StatusView {
+        StatusView {
+            repository_root: "/repo".into(),
+            workspace: "None".into(),
+            files: 50,
+            languages: "rust".into(),
+            parsed: 40,
+            recovered: 3,
+            skipped: 5,
+            failed: 2,
+        }
+    }
+
+    #[test]
+    fn test_status_format_contains_values() {
+        let out = format(&view());
+        assert!(out.contains("50 files"));
+        assert!(out.contains("40 parsed"));
+        assert!(out.contains("3 recovered"));
+        assert!(out.contains("5 skipped"));
+        assert!(out.contains("2 failed"));
+    }
+
+    #[test]
+    fn test_status_format_header() {
+        let out = format(&view());
+        assert!(out.starts_with("\u{2500}\u{2500} kode status "));
+    }
 }

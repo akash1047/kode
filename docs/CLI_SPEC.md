@@ -24,13 +24,14 @@ COMMANDS:
   help     Print this message or the help of the given subcommand(s)
 
 Options:
-  -C, --repo <PATH>  Repository to operate on
-  -v, --verbose...   Increase logging verbosity
-  -q, --quiet        Suppress non-essential output
-      --json         Machine-readable output
-      --no-color     Disable colored output
-  -h, --help         Print help
-  -V, --version      Print version
+  -C, --repo <PATH>      Repository to operate on
+  -v, --verbose...       Increase logging verbosity
+  -q, --quiet            Suppress non-essential output
+      --json             Machine-readable output
+      --no-color         Disable colored output
+      --log-file <PATH>  Write logs to file (default: .kode/logs/kode.log)
+  -h, --help             Print help
+  -V, --version          Print version
 ```
 
 ---

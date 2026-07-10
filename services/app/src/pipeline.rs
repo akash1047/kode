@@ -97,6 +97,7 @@ pub fn run_scan(path: Option<&str>) -> Result<ScanResult, Box<dyn std::error::Er
 
     // ── Stage 1: Discovery ──────────────────────────────────────────────
 
+    tracing::info!("Stage 1: Discovery — discovering repository sources");
     let snapshot = RepositoryDiscovery::default().run(&repository)?;
 
     // ── Stage 2: Parsing ────────────────────────────────────────────────
@@ -107,12 +108,22 @@ pub fn run_scan(path: Option<&str>) -> Result<ScanResult, Box<dyn std::error::Er
     let tree_inventory = parser_orchestrator.run(&snapshot, &sources);
 
     let parse_stats = collect_parse_stats(&snapshot, &tree_inventory);
+    tracing::info!(
+        "Stage 2: Parsing — parsed {} files, {} failed, {} skipped",
+        parse_stats.parsed,
+        parse_stats.failed,
+        parse_stats.skipped,
+    );
 
     // ── Stage 3: Fact Extraction ────────────────────────────────────────
 
     let extractor_orchestrator = ExtractionOrchestrator::new(ExtractorRegistry::default());
     let facts: RepositoryFacts = extractor_orchestrator.run(&tree_inventory);
     let entity_count = facts.entity_count();
+    tracing::info!(
+        "Stage 3: Fact extraction — extracted {} entities",
+        entity_count
+    );
 
     // ── Stage 4: Knowledge Graph Construction ───────────────────────────
 
@@ -124,13 +135,19 @@ pub fn run_scan(path: Option<&str>) -> Result<ScanResult, Box<dyn std::error::Er
             (Some(g), n, r)
         }
         Err(errors) => {
-            eprintln!(
+            tracing::warn!(
                 "Graph construction encountered {} validation error(s); proceeding without graph",
                 errors.len()
             );
             (None, 0, 0)
         }
     };
+
+    tracing::info!(
+        "Stage 4: Knowledge graph — {} nodes, {} relationships",
+        graph_nodes,
+        graph_relationships,
+    );
 
     // ── Stage 5: Storage Persistence ────────────────────────────────────
 
@@ -142,13 +159,17 @@ pub fn run_scan(path: Option<&str>) -> Result<ScanResult, Box<dyn std::error::Er
                 Some(storage_path_str(&repository)),
             ),
             Err(e) => {
-                eprintln!("Storage persistence failed: {e}; continuing without cache");
+                tracing::error!(error = %e, "Storage persistence failed; continuing without cache");
                 (None, None, None)
             }
         }
     } else {
         (None, None, None)
     };
+
+    if let Some(rev) = storage_revision {
+        tracing::info!("Stage 5: Storage persistence complete — revision {}", rev);
+    }
 
     let elapsed = start.elapsed();
 

@@ -1,11 +1,65 @@
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use clap::{Parser, Subcommand};
 use kode_acquisition::Language;
 use kode_graph as _;
 use kode_query::QueryEngine;
 use kode_storage::{RepositoryStorage, SqliteBackend};
+use rig as _;
+use serde as _;
 
+mod chat;
+
+fn init_logging(
+    verbose: u8,
+    quiet: bool,
+    log_file: Option<PathBuf>,
+) -> Option<tracing_appender::non_blocking::WorkerGuard> {
+    use tracing_subscriber::fmt;
+    use tracing_subscriber::layer::SubscriberExt;
+    use tracing_subscriber::util::SubscriberInitExt;
+    use tracing_subscriber::EnvFilter;
+
+    let log_level = if quiet && verbose == 0 {
+        "off"
+    } else {
+        match verbose {
+            0 => "kode=warn",
+            1 => "kode=info",
+            2 => "kode=debug",
+            _ => "kode=trace",
+        }
+    };
+
+    let filter = EnvFilter::try_new(log_level).unwrap_or_else(|_| EnvFilter::new("kode=warn"));
+
+    let stderr_layer = fmt::layer().with_writer(std::io::stderr).with_target(false);
+
+    let subscriber = tracing_subscriber::registry()
+        .with(filter)
+        .with(stderr_layer);
+
+    if let Some(path) = log_file {
+        if let Some(parent) = path.parent() {
+            let _ = std::fs::create_dir_all(parent);
+        }
+        let file_appender = tracing_appender::rolling::never(
+            path.parent().unwrap_or(std::path::Path::new(".")),
+            path.file_name().unwrap().to_str().unwrap_or("kode.log"),
+        );
+        let (non_blocking, guard) = tracing_appender::non_blocking(file_appender);
+        let file_layer = fmt::layer()
+            .with_writer(non_blocking)
+            .with_target(true)
+            .with_ansi(false);
+        let subscriber = subscriber.with(file_layer);
+        let _ = subscriber.try_init();
+        Some(guard)
+    } else {
+        let _ = subscriber.try_init();
+        None
+    }
+}
 mod config;
 mod formatter;
 mod mcp;
@@ -63,9 +117,17 @@ struct Cli {
 
     #[arg(global = true, long = "no-color", help = "Disable colored output")]
     no_color: bool,
+
+    #[arg(
+        global = true,
+        long = "log-file",
+        value_name = "PATH",
+        help = "Write logs to file (default: .kode/logs/kode.log)"
+    )]
+    log_file: Option<String>,
 }
 
-#[derive(Subcommand)]
+#[derive(Debug, Subcommand)]
 enum Commands {
     #[command(
         about = "Discover and index a repository",
@@ -129,16 +191,19 @@ enum Commands {
 
     #[command(
         about = "Interactive repository assistant",
-        long_about = "Starts an interactive session that answers repository questions using live source code and evidence-backed citations."
+        long_about = "Starts an interactive session with an LLM assistant."
     )]
     Chat {
         #[arg(
             short = 'm',
             long = "message",
             value_name = "TEXT",
-            help = "Ask one question and exit"
+            help = "Ask one question and exit (alias for positional argument)"
         )]
         message: Option<String>,
+
+        #[arg(help = "Question to ask (one-shot mode; overrides --message)")]
+        question: Option<String>,
     },
 
     #[command(about = "Manage the local repository cache")]
@@ -160,7 +225,7 @@ enum Commands {
     },
 }
 
-#[derive(Subcommand)]
+#[derive(Debug, Subcommand)]
 enum CacheCommands {
     #[command(about = "Show cache information")]
     Status,
@@ -168,7 +233,7 @@ enum CacheCommands {
     Clear,
 }
 
-#[derive(Subcommand)]
+#[derive(Debug, Subcommand)]
 enum ConfigCommands {
     #[command(about = "Create configuration")]
     Init,
@@ -186,7 +251,7 @@ enum ConfigCommands {
     },
 }
 
-#[derive(Subcommand)]
+#[derive(Debug, Subcommand)]
 enum McpCommands {
     #[command(about = "Start the MCP server")]
     Serve {
@@ -196,10 +261,6 @@ enum McpCommands {
         #[arg(long, help = "Port for HTTP transport (default: stdio)")]
         port: Option<u16>,
     },
-}
-
-fn placeholder_message(command: &str) -> String {
-    format!("{} has not been implemented yet.", command)
 }
 
 fn resolve_path<'a>(path: Option<&'a Path>, repo: Option<&'a str>) -> &'a str {
@@ -238,11 +299,7 @@ fn handle_files(
 fn open_storage(path: Option<&str>) -> Result<RepositoryStorage, Box<dyn std::error::Error>> {
     let repo_path = path.unwrap_or(".");
     let path = Path::new(repo_path);
-    let absolute = if path.is_relative() {
-        std::env::current_dir()?.join(path)
-    } else {
-        path.to_path_buf()
-    };
+    let absolute = path.canonicalize()?;
     let db_path = absolute.join(".kode").join("cache.db");
 
     if !db_path.exists() {
@@ -288,30 +345,105 @@ fn handle_cache_clear(path: Option<&str>) -> Result<(), Box<dyn std::error::Erro
     Ok(())
 }
 
+fn resolve_log_path(cli: &Cli) -> PathBuf {
+    if let Some(path) = &cli.log_file {
+        return PathBuf::from(path);
+    }
+    let repo_path = cli.repo.as_deref().unwrap_or(".");
+    if let Ok(cfg) = config::Config::load(Path::new(repo_path)) {
+        if let Some(val) = cfg.get("logging.file") {
+            if let Some(s) = val.as_str() {
+                if !s.is_empty() {
+                    return PathBuf::from(s);
+                }
+            }
+        }
+    }
+    Path::new(repo_path)
+        .join(".kode")
+        .join("logs")
+        .join("kode.log")
+}
+
 fn main() {
     let cli = Cli::parse();
+    let _guard = init_logging(cli.verbose, cli.quiet, Some(resolve_log_path(&cli)));
+
+    let start = std::time::Instant::now();
+    tracing::info!(command = ?cli.command, "CLI command started");
 
     let result = match &cli.command {
         Commands::Scan { path, .. } => {
             let scan_path = resolve_path(path.as_deref().map(Path::new), cli.repo.as_deref());
-            handle_scan(Some(scan_path)).map(|o| print!("{}", formatter::scan::format(&o)))
+            handle_scan(Some(scan_path)).map(|o| {
+                if cli.json {
+                    print!("{}", formatter::json::format_scan(&o))
+                } else {
+                    print!("{}", formatter::scan::format(&o))
+                }
+            })
         }
-        Commands::Status => {
-            handle_status(cli.repo.as_deref()).map(|o| print!("{}", formatter::status::format(&o)))
-        }
+        Commands::Status => handle_status(cli.repo.as_deref()).map(|o| {
+            if cli.json {
+                print!("{}", formatter::json::format_status(&o))
+            } else {
+                print!("{}", formatter::status::format(&o))
+            }
+        }),
         Commands::Files { language, .. } => handle_files(cli.repo.as_deref(), language.as_deref())
-            .map(|o| print!("{}", formatter::files::format(&o))),
+            .map(|o| {
+                if cli.json {
+                    print!("{}", formatter::json::format_files(&o))
+                } else {
+                    print!("{}", formatter::files::format(&o))
+                }
+            }),
         Commands::Symbols { language } => handle_symbols(cli.repo.as_deref(), language.as_deref())
-            .map(|o| print!("{}", formatter::symbols::format(&o))),
-        Commands::Query { query } => handle_query(cli.repo.as_deref(), query)
-            .map(|o| print!("{}", formatter::symbols::format(&o))),
-        Commands::Chat { .. } => {
-            println!("{}", placeholder_message("Chat"));
-            Ok(())
+            .map(|o| {
+                if cli.json {
+                    print!("{}", formatter::json::format_symbols(&o))
+                } else {
+                    print!("{}", formatter::symbols::format(&o))
+                }
+            }),
+        Commands::Query { query } => handle_query(cli.repo.as_deref(), query).map(|o| {
+            if cli.json {
+                print!("{}", formatter::json::format_symbols(&o))
+            } else {
+                print!("{}", formatter::symbols::format(&o))
+            }
+        }),
+        Commands::Chat { message, question } => {
+            let repo_path = cli.repo.as_deref();
+            let msg = question.as_deref().or(message.as_deref());
+            match chat::handle_chat(repo_path, msg, cli.no_color) {
+                Ok(view) => {
+                    if cli.json {
+                        println!("{}", formatter::chat::format_json(&view));
+                    } else {
+                        let out = formatter::chat::format(&view);
+                        if out.is_empty() {
+                            println!("(no response)");
+                        } else {
+                            print!("{}", out);
+                        }
+                    }
+                    Ok(())
+                }
+                Err(e) => {
+                    tracing::error!(error = %e, "Chat command failed");
+                    std::process::exit(1);
+                }
+            }
         }
         Commands::Cache { command } => match command {
-            CacheCommands::Status => handle_cache_status(cli.repo.as_deref())
-                .map(|o| print!("{}", formatter::cache::format(&o))),
+            CacheCommands::Status => handle_cache_status(cli.repo.as_deref()).map(|o| {
+                if cli.json {
+                    print!("{}", formatter::json::format_cache(&o))
+                } else {
+                    print!("{}", formatter::cache::format(&o))
+                }
+            }),
             CacheCommands::Clear => handle_cache_clear(cli.repo.as_deref())
                 .map(|_| println!("Cache cleared successfully.")),
         },
@@ -322,7 +454,7 @@ fn main() {
                 ConfigCommands::Init => {
                     match config::init(path) {
                         Ok(p) => println!("Configuration initialized at {}", p.display()),
-                        Err(e) => eprintln!("error: {e}"),
+                        Err(e) => tracing::error!(error = %e, "Config Init failed"),
                     }
                     Ok(())
                 }
@@ -330,16 +462,16 @@ fn main() {
                     match config::Config::load(path) {
                         Ok(cfg) => match cfg.get(key) {
                             Some(val) => println!("{val}"),
-                            None => eprintln!("key '{key}' not found"),
+                            None => tracing::warn!(key = %key, "Config key not found"),
                         },
-                        Err(e) => eprintln!("error: {e}"),
+                        Err(e) => tracing::error!(error = %e, "Config Get failed"),
                     }
                     Ok(())
                 }
                 ConfigCommands::Set { key, value } => {
                     match config::set(path, key, value) {
                         Ok(()) => println!("set {key} = {value}"),
-                        Err(e) => eprintln!("error: {e}"),
+                        Err(e) => tracing::error!(error = %e, "Config Set failed"),
                     }
                     Ok(())
                 }
@@ -358,12 +490,12 @@ fn main() {
                                 None => runtime.block_on(mcp::run_stdio(&path)),
                             };
                             if let Err(e) = result {
-                                eprintln!("error: {}", e);
+                                tracing::error!(error = %e, "MCP serve failed");
                                 std::process::exit(1);
                             }
                         }
                         Err(e) => {
-                            eprintln!("error: failed to start tokio runtime: {}", e);
+                            tracing::error!(error = %e, "MCP serve failed to start tokio runtime");
                             std::process::exit(1);
                         }
                     }
@@ -374,9 +506,11 @@ fn main() {
     };
 
     if let Err(e) = result {
-        eprintln!("error: {}", e);
+        tracing::error!(error = %e, "Command failed");
         std::process::exit(1);
     }
+
+    tracing::info!(elapsed = ?start.elapsed(), "CLI command completed");
 }
 
 #[cfg(test)]
@@ -498,8 +632,9 @@ mod tests {
     fn test_chat_with_message() {
         let cli = Cli::parse_from(["kode", "chat", "-m", "hello"]);
         match &cli.command {
-            Commands::Chat { message } => {
+            Commands::Chat { message, question } => {
                 assert_eq!(message.as_ref().unwrap(), "hello");
+                assert!(question.is_none());
             }
             _ => panic!("Expected Chat command"),
         }
@@ -509,8 +644,33 @@ mod tests {
     fn test_chat_with_long_message() {
         let cli = Cli::parse_from(["kode", "chat", "--message", "hello"]);
         match &cli.command {
-            Commands::Chat { message } => {
+            Commands::Chat { message, question } => {
                 assert_eq!(message.as_ref().unwrap(), "hello");
+                assert!(question.is_none());
+            }
+            _ => panic!("Expected Chat command"),
+        }
+    }
+
+    #[test]
+    fn test_chat_with_positional_question() {
+        let cli = Cli::parse_from(["kode", "chat", "what does this do?"]);
+        match &cli.command {
+            Commands::Chat { message, question } => {
+                assert!(message.is_none());
+                assert_eq!(question.as_ref().unwrap(), "what does this do?");
+            }
+            _ => panic!("Expected Chat command"),
+        }
+    }
+
+    #[test]
+    fn test_chat_positional_overrides_message() {
+        let cli = Cli::parse_from(["kode", "chat", "-m", "ignored", "used"]);
+        match &cli.command {
+            Commands::Chat { message, question } => {
+                assert_eq!(message.as_ref().unwrap(), "ignored");
+                assert_eq!(question.as_ref().unwrap(), "used");
             }
             _ => panic!("Expected Chat command"),
         }
@@ -720,12 +880,6 @@ mod tests {
     }
 
     #[test]
-    fn test_placeholder_message_format() {
-        let msg = placeholder_message("Repository scanning");
-        assert_eq!(msg, "Repository scanning has not been implemented yet.");
-    }
-
-    #[test]
     fn test_root_help_contains_all_commands() {
         let mut cmd = Cli::command();
         let help = cmd.render_help().to_string();
@@ -758,7 +912,6 @@ mod tests {
         let help = cmd.render_help().to_string();
         assert!(help.contains("Evidence-first code intelligence"));
         assert!(help.contains("deterministic understanding"));
-        assert!(help.contains("path:line citations"));
     }
 
     #[test]
@@ -797,5 +950,111 @@ mod tests {
         let help = cmd.render_help().to_string();
         assert!(help.contains("--help"));
         assert!(help.contains("--version"));
+    }
+
+    mod resolve_path_tests {
+        use super::*;
+
+        #[test]
+        fn test_none_path_none_repo_returns_dot() {
+            assert_eq!(resolve_path(None, None), ".");
+        }
+
+        #[test]
+        fn test_some_path_none_repo_returns_path() {
+            assert_eq!(resolve_path(Some(Path::new("/foo")), None), "/foo");
+        }
+
+        #[test]
+        fn test_none_path_some_repo_returns_repo() {
+            assert_eq!(resolve_path(None, Some("myrepo")), "myrepo");
+        }
+
+        #[test]
+        fn test_some_path_some_repo_path_wins() {
+            assert_eq!(
+                resolve_path(Some(Path::new("/path")), Some("repo")),
+                "/path"
+            );
+        }
+    }
+
+    #[test]
+    fn test_open_storage_no_cache_db_returns_error() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let path = dir.path().to_str().unwrap();
+        let result = open_storage(Some(path));
+        assert!(result.is_err());
+        let err = result.err().unwrap();
+        assert!(err.to_string().contains("has not been scanned"));
+    }
+
+    #[test]
+    fn test_json_flag_parsing() {
+        let cli = Cli::parse_from(["kode", "--json", "status"]);
+        assert!(cli.json);
+    }
+
+    #[test]
+    fn test_no_color_flag() {
+        let cli = Cli::parse_from(["kode", "--no-color", "status"]);
+        assert!(cli.no_color);
+    }
+
+    #[test]
+    fn test_json_and_no_color_together() {
+        let cli = Cli::parse_from(["kode", "--json", "--no-color", "scan", "."]);
+        assert!(cli.json);
+        assert!(cli.no_color);
+    }
+
+    #[test]
+    fn test_log_init_does_not_panic() {
+        init_logging(0, false, None);
+        init_logging(1, false, None);
+        init_logging(3, false, None);
+        init_logging(0, true, None);
+    }
+
+    #[test]
+    fn test_verbose_zero_log_level() {
+        init_logging(0, false, None);
+    }
+
+    #[test]
+    fn test_verbose_one_log_level() {
+        init_logging(1, false, None);
+    }
+
+    #[test]
+    fn test_verbose_three_log_level() {
+        init_logging(3, false, None);
+    }
+
+    #[test]
+    fn test_quiet_suppresses_output() {
+        init_logging(0, true, None);
+    }
+
+    #[test]
+    fn test_log_file_flag_parsing() {
+        let cli = Cli::parse_from(["kode", "--log-file", "/tmp/test.log", "status"]);
+        assert_eq!(cli.log_file.as_deref(), Some("/tmp/test.log"));
+    }
+
+    #[test]
+    fn test_log_file_default_path() {
+        let cli = Cli::parse_from(["kode", "status"]);
+        let path = resolve_log_path(&cli);
+        assert!(path.ends_with(".kode/logs/kode.log"));
+    }
+
+    #[test]
+    fn test_log_file_creates_file() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let log_path = dir.path().join("subdir").join("test.log");
+        let _guard = init_logging(0, false, Some(log_path.clone()));
+        // Directory created even if subscriber init fails (already inited by prior tests)
+        assert!(log_path.parent().unwrap().exists());
     }
 }

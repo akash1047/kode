@@ -1,23 +1,53 @@
 use crate::presenter::cache::CacheStatusView;
 
+use super::style;
+
 pub fn format(view: &CacheStatusView) -> String {
-    format!(
-        "Cache Status\n\
-         \x20 Repository: {repo}\n\
-         \x20 Schema: {schema}\n\
-         \x20 Graph version: {gver}\n\
-         \x20 Revisions: {revs}\n\
-         \x20 Latest revision: {latest}\n\
-         \x20 Nodes: {nodes}\n\
-         \x20 Relationships: {rels}\n",
-        repo = view.repository_id,
-        schema = view.schema_version,
-        gver = view.graph_version,
-        revs = view.revision_count,
-        latest = view
-            .latest_revision
-            .map_or("none".into(), |r| r.to_string()),
-        nodes = view.total_nodes,
-        rels = view.total_relationships,
-    )
+    let latest = view
+        .latest_revision
+        .map_or("none".into(), |r| r.to_string());
+    let mut out = style::header("cache");
+    out.push_str(&format!(
+        "  ● {} · schema {} · graph {}\n  ● {} revisions (latest: {}) · {} nodes · {} relationships\n",
+        view.repository_id,
+        view.schema_version,
+        view.graph_version,
+        view.revision_count,
+        latest,
+        view.total_nodes,
+        view.total_relationships,
+    ));
+    out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::presenter::cache::CacheStatusView;
+
+    fn view(latest: Option<u64>) -> CacheStatusView {
+        CacheStatusView {
+            repository_id: "test-repo".into(),
+            revision_count: 5,
+            total_nodes: 1000,
+            total_relationships: 500,
+            schema_version: "1.0".into(),
+            graph_version: "2.0".into(),
+            latest_revision: latest,
+        }
+    }
+
+    #[test]
+    fn test_cache_format_with_latest() {
+        let out = format(&view(Some(42)));
+        assert!(out.contains("test-repo"));
+        assert!(out.contains("5 revisions"));
+        assert!(out.contains("42"));
+    }
+
+    #[test]
+    fn test_cache_format_no_latest() {
+        let out = format(&view(None));
+        assert!(out.contains("none"));
+    }
 }

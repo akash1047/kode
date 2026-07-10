@@ -16,3 +16,4 @@ kode-acquisition = { path = "../../crates/acquisition" }
 kode-analysis = { path = "../../crates/analysis" }
 kode-graph = { path = "../../crates/graph" }
 kode-storage = { path = "../../crates/storage" }
+tracing = { workspace = true }
