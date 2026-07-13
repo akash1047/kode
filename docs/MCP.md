@@ -1,6 +1,6 @@
 # MCP
 
-> **Implementation status:** The MCP server is implemented. Module at `tools/cli/src/mcp.rs` exposes 5 tools (find_symbol, search_symbols, get_symbol_details, symbols_by_kind, read_file) over stdio or HTTP transport via `rmcp` v2.
+> **Implementation status:** The MCP server is implemented. Module at `tools/cli/src/mcp.rs` exposes 8 tools (`find_symbol`, `search_symbols`, `get_symbol_details`, `symbols_by_kind`, `read_file`, `find_callers`, `find_callees`, `impact_analysis`) over stdio or HTTP transport via `rmcp`.
 
 This document describes the **MCP (Model Context Protocol)** integration in **kode**.
 

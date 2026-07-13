@@ -105,6 +105,7 @@ mod tests {
                 graph_relationships: 5,
                 storage_revision: Some(1),
                 storage_path: None,
+                cache_hit: false,
             },
             graph: None,
             revision: None,

@@ -480,6 +480,21 @@ impl StorageBackend for SqliteBackend {
         })
     }
 
+    fn repository_fingerprint(&self, repository_id: &str) -> Result<Option<String>, StorageError> {
+        let conn = self.conn();
+        let result = conn.query_row(
+            "SELECT fingerprint FROM repositories WHERE id = ?1",
+            params![repository_id],
+            |row| row.get::<_, String>(0),
+        );
+        match result {
+            Ok(fp) if !fp.is_empty() => Ok(Some(fp)),
+            Ok(_) => Ok(None),
+            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+            Err(e) => Err(StorageError::from(e)),
+        }
+    }
+
     fn schema_version(&self) -> Result<SchemaVersion, StorageError> {
         Ok(SchemaVersion::new(SCHEMA_MAJOR, SCHEMA_MINOR))
     }

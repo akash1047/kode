@@ -39,8 +39,10 @@ use kode_analysis::extraction::{ExtractionOrchestrator, ExtractorRegistry, Repos
 use kode_analysis::parsing::{
     ParseOutcome, ParserRegistry, ParsingOrchestrator, SourceInventory, SyntaxTreeInventory,
 };
+use kode_common::hash::Fnv1aHasher;
 use kode_graph::{GraphBuilder, GraphVersion, KnowledgeGraph, RepositoryContext};
 use kode_storage::{GraphRevision, RepositoryMetadata, RepositoryStorage, SqliteBackend};
+use std::hash::{Hash, Hasher};
 
 /// Default cache directory name (relative to repository root).
 const CACHE_DIR: &str = ".kode";
@@ -69,6 +71,8 @@ pub struct ScanStatistics {
     pub storage_revision: Option<u64>,
     /// Path to the storage database file.
     pub storage_path: Option<String>,
+    /// True when stages 2–5 were skipped because the content fingerprint matched.
+    pub cache_hit: bool,
 }
 
 /// Public result of a scan pipeline run.
@@ -88,6 +92,10 @@ pub struct ScanResult {
 /// Run the full scan pipeline: discovery, source loading, parsing, fact
 /// extraction, knowledge graph construction, and storage persistence.
 ///
+/// When the repository content fingerprint matches the last cached revision,
+/// stages 2–5 are skipped and the stored graph is returned (`cache_hit`).
+/// Use `kode scan --full` (clears cache) to force a rebuild.
+///
 /// The pipeline stores its cache in `<repository-root>/.kode/cache.db`.
 pub fn run_scan(path: Option<&str>) -> Result<ScanResult, Box<dyn std::error::Error>> {
     let start = Instant::now();
@@ -99,6 +107,51 @@ pub fn run_scan(path: Option<&str>) -> Result<ScanResult, Box<dyn std::error::Er
 
     tracing::info!("Stage 1: Discovery — discovering repository sources");
     let snapshot = RepositoryDiscovery::default().run(&repository)?;
+    let fingerprint = compute_content_fingerprint(&snapshot);
+
+    // ── Incremental fast path ───────────────────────────────────────────
+    if let Some((graph, revision)) = try_cache_hit(&repository, &fingerprint) {
+        tracing::info!(
+            "Incremental skip — fingerprint match, reusing revision {}",
+            revision.revision_id
+        );
+        let elapsed = start.elapsed();
+        let entity_count = graph
+            .nodes()
+            .iter()
+            .filter(|n| {
+                !matches!(
+                    n.kind(),
+                    kode_graph::NodeKind::Repository
+                        | kode_graph::NodeKind::Workspace
+                        | kode_graph::NodeKind::File
+                )
+            })
+            .count();
+        let statistics = ScanStatistics {
+            elapsed,
+            files_discovered: snapshot.files().len(),
+            directories: snapshot.directories().len(),
+            manifests: snapshot.manifests().len(),
+            languages: snapshot.languages().len(),
+            parsed: 0,
+            recovered: 0,
+            skipped: snapshot.files().len(),
+            failed: 0,
+            entities_extracted: entity_count,
+            graph_nodes: graph.node_count(),
+            graph_relationships: graph.relationship_count(),
+            storage_revision: Some(revision.revision_id),
+            storage_path: Some(storage_path_str(&repository)),
+            cache_hit: true,
+        };
+        return Ok(ScanResult {
+            snapshot,
+            statistics,
+            graph: Some(graph),
+            revision: Some(revision),
+        });
+    }
 
     // ── Stage 2: Parsing ────────────────────────────────────────────────
 
@@ -152,7 +205,7 @@ pub fn run_scan(path: Option<&str>) -> Result<ScanResult, Box<dyn std::error::Er
     // ── Stage 5: Storage Persistence ────────────────────────────────────
 
     let (revision, storage_revision, storage_path) = if let Some(ref graph) = graph {
-        match persist_graph(&repository, graph) {
+        match persist_graph(&repository, graph, &fingerprint) {
             Ok(rev) => (
                 Some(rev.clone()),
                 Some(rev.revision_id),
@@ -188,6 +241,7 @@ pub fn run_scan(path: Option<&str>) -> Result<ScanResult, Box<dyn std::error::Er
         graph_relationships,
         storage_revision,
         storage_path,
+        cache_hit: false,
     };
 
     Ok(ScanResult {
@@ -196,6 +250,53 @@ pub fn run_scan(path: Option<&str>) -> Result<ScanResult, Box<dyn std::error::Er
         graph,
         revision,
     })
+}
+
+/// Content fingerprint from discovered file paths, sizes, and mtimes.
+///
+/// Used to skip re-parse when the repository has not changed on disk.
+fn compute_content_fingerprint(snapshot: &RepositorySnapshot) -> String {
+    let mut files: Vec<_> = snapshot.files().iter().collect();
+    files.sort_by(|a, b| a.relative_path().cmp(b.relative_path()));
+    let mut hasher = Fnv1aHasher::new();
+    for f in files {
+        f.relative_path().to_string_lossy().hash(&mut hasher);
+        f.size().hash(&mut hasher);
+        if let Some(m) = f.modified() {
+            if let Ok(d) = m.duration_since(std::time::UNIX_EPOCH) {
+                d.as_secs().hash(&mut hasher);
+                d.subsec_nanos().hash(&mut hasher);
+            }
+        }
+    }
+    format!("{:016x}", hasher.finish())
+}
+
+/// If storage has a matching fingerprint, load the latest graph and skip rebuild.
+fn try_cache_hit(
+    repository: &Repository,
+    fingerprint: &str,
+) -> Option<(KnowledgeGraph, GraphRevision)> {
+    let db_path = cache_db_path(repository);
+    if !db_path.exists() {
+        return None;
+    }
+    let backend = SqliteBackend::open(&db_path).ok()?;
+    let repo_id = repository
+        .identity()
+        .map(|id| id.as_str().to_string())
+        .unwrap_or_else(|| repository.root().display().to_string());
+    let storage = RepositoryStorage::open(Box::new(backend), &repo_id).ok()?;
+    let stored = storage.fingerprint().ok().flatten()?;
+    if stored != fingerprint {
+        tracing::debug!(
+            stored = %stored,
+            current = %fingerprint,
+            "fingerprint mismatch — full rescan"
+        );
+        return None;
+    }
+    storage.load_latest().ok()
 }
 
 /// Data from parsing statistics collection.
@@ -254,6 +355,7 @@ fn storage_path_str(repository: &Repository) -> String {
 fn persist_graph(
     repository: &Repository,
     graph: &KnowledgeGraph,
+    fingerprint: &str,
 ) -> Result<GraphRevision, Box<dyn std::error::Error>> {
     let db_path = cache_db_path(repository);
 
@@ -269,13 +371,12 @@ fn persist_graph(
 
     let mut storage = RepositoryStorage::open(Box::new(backend), &repo_id)?;
 
-    // Collect unique source files from fact evidence to build metadata.
     let root = repository.root().display().to_string();
     let metadata = RepositoryMetadata {
         repository_id: repo_id,
         root,
-        fingerprint: String::new(),
-        parser_versions: vec![],
+        fingerprint: fingerprint.to_string(),
+        parser_versions: vec!["tree-sitter-rust".into()],
         last_updated: SystemTime::now(),
     };
 
@@ -326,6 +427,7 @@ impl ScanStatistics {
             graph_relationships,
             storage_revision,
             storage_path,
+            cache_hit: false,
         }
     }
 }

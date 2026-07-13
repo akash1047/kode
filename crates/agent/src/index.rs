@@ -154,6 +154,46 @@ impl SymbolIndex {
     pub fn call_edge_count(&self) -> usize {
         self.callees_of.values().map(|v| v.len()).sum()
     }
+
+    /// Fan-in / fan-out for functions (optionally filtered by exact name).
+    pub fn metrics(
+        &self,
+        name_filter: Option<&str>,
+    ) -> Vec<(String, usize, usize, PathBuf, usize)> {
+        let mut rows = Vec::new();
+        for s in &self.symbols {
+            if s.kind != "function" {
+                continue;
+            }
+            if name_filter.is_some_and(|n| s.name != n) {
+                continue;
+            }
+            let fan_in = self.callers_of.get(&s.name).map(|v| v.len()).unwrap_or(0);
+            let fan_out = self.callees_of.get(&s.name).map(|v| v.len()).unwrap_or(0);
+            rows.push((
+                s.name.clone(),
+                fan_in,
+                fan_out,
+                s.file_path.clone(),
+                s.start_line,
+            ));
+        }
+        rows.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
+        rows
+    }
+
+    /// Functions with no recorded callers (heuristic dead / unreferenced).
+    pub fn dead_code(&self) -> Vec<&IndexedSymbol> {
+        self.symbols
+            .iter()
+            .filter(|s| {
+                s.kind == "function"
+                    && s.name != "main"
+                    && !s.name.starts_with("test_")
+                    && !self.callers_of.contains_key(&s.name)
+            })
+            .collect()
+    }
 }
 
 /// Shared index handle.

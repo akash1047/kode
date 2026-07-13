@@ -7,9 +7,10 @@
 //!
 //! # Responsibilities
 //!
+//! - Deterministic intent resolution ([`intent`])
 //! - Evidence verification against live source code
 //! - Graph traversal for definition and reference resolution
-//! - Repository validation before query execution
+//! - Architecture metrics, dead-code heuristics, call-graph cycles
 //!
 //! # Invariants
 //!
@@ -19,6 +20,15 @@
 
 #[cfg(test)]
 use tempfile as _;
+
+mod analysis;
+mod intent;
+
+pub use analysis::{
+    call_cycles, dead_code_candidates, file_cohesion_pct, format_cycles, format_metrics,
+    function_metrics, CallCycle, FunctionMetrics,
+};
+pub use intent::{parse_intent, QueryIntent};
 
 use std::path::PathBuf;
 use std::sync::Mutex;
@@ -47,6 +57,7 @@ pub enum QueryError {
 }
 
 /// A single symbol result from a query.
+#[derive(Debug, Clone)]
 pub struct SymbolResult {
     pub name: String,
     pub kind: NodeKind,
@@ -61,7 +72,7 @@ pub struct SymbolResult {
 }
 
 impl SymbolResult {
-    fn from_node(node: &Node) -> Self {
+    pub(crate) fn from_node(node: &Node) -> Self {
         let (file_path, start_line, start_column, end_line, end_column) =
             evidence_location(node.evidence());
         let verified = evidence_verified(node.evidence());
@@ -111,10 +122,62 @@ fn evidence_location(evidence: &GraphEvidence) -> (PathBuf, usize, usize, usize,
 
 fn evidence_verified(evidence: &GraphEvidence) -> bool {
     match evidence {
-        GraphEvidence::Source(ev) => ev.source_file().exists(),
+        GraphEvidence::Source(ev) => {
+            verify_source_evidence(ev.source_file(), ev.start_line(), ev.end_line(), None)
+        }
         GraphEvidence::Structural(StructuralEvidence::File { path }) => path.exists(),
         _ => false,
     }
+}
+
+/// Verify source evidence against the live filesystem.
+///
+/// Checks: file exists, start/end lines are in range, and optionally that
+/// `name_hint` appears somewhere in the cited line range.
+pub fn verify_source_evidence(
+    path: &std::path::Path,
+    start_line: usize,
+    end_line: usize,
+    name_hint: Option<&str>,
+) -> bool {
+    if !path.exists() {
+        return false;
+    }
+    if start_line == 0 {
+        // 0 can mean "unknown" for some structural conversions — require file only.
+        return true;
+    }
+    let Ok(content) = std::fs::read_to_string(path) else {
+        return false;
+    };
+    let line_count = content.lines().count();
+    if start_line > line_count {
+        return false;
+    }
+    if end_line > 0 && end_line < start_line {
+        return false;
+    }
+    if let Some(name) = name_hint {
+        if name.is_empty() {
+            return true;
+        }
+        let start = start_line.saturating_sub(1);
+        let end = if end_line == 0 {
+            start + 1
+        } else {
+            end_line.min(line_count)
+        };
+        let region: String = content
+            .lines()
+            .skip(start)
+            .take(end.saturating_sub(start))
+            .collect::<Vec<_>>()
+            .join("\n");
+        if !region.contains(name) {
+            return false;
+        }
+    }
+    true
 }
 
 fn evidence_language(evidence: &GraphEvidence) -> Option<String> {
@@ -416,6 +479,59 @@ impl QueryEngine {
         });
         Ok(results)
     }
+
+    /// Functions with no incoming `Calls` (heuristic dead / unreferenced).
+    pub fn dead_code(&self) -> Result<Vec<SymbolResult>, QueryError> {
+        let graph = self.load_graph()?;
+        Ok(dead_code_candidates(&graph))
+    }
+
+    /// Call-graph cycles (SCCs).
+    pub fn cycles(&self) -> Result<Vec<CallCycle>, QueryError> {
+        let graph = self.load_graph()?;
+        Ok(call_cycles(&graph))
+    }
+
+    /// Fan-in / fan-out metrics for functions.
+    pub fn metrics(&self, name: Option<&str>) -> Result<Vec<FunctionMetrics>, QueryError> {
+        let graph = self.load_graph()?;
+        Ok(function_metrics(&graph, name))
+    }
+
+    /// Resolve intent from a query string and execute it.
+    pub fn execute(&self, raw: &str) -> Result<QueryOutcome, QueryError> {
+        self.execute_intent(&parse_intent(raw))
+    }
+
+    /// Execute a structured [`QueryIntent`].
+    pub fn execute_intent(&self, intent: &QueryIntent) -> Result<QueryOutcome, QueryError> {
+        match intent {
+            QueryIntent::Search { query } => {
+                Ok(QueryOutcome::Symbols(self.search_symbols(query, None)?))
+            }
+            QueryIntent::Callers { name } => Ok(QueryOutcome::Symbols(self.find_callers(name)?)),
+            QueryIntent::Callees { name } => Ok(QueryOutcome::Symbols(self.find_callees(name)?)),
+            QueryIntent::Impact { name, max_depth } => Ok(QueryOutcome::Symbols(
+                self.impact_analysis(name, *max_depth)?,
+            )),
+            QueryIntent::DeadCode => Ok(QueryOutcome::Symbols(self.dead_code()?)),
+            QueryIntent::Cycles => Ok(QueryOutcome::Cycles(self.cycles()?)),
+            QueryIntent::Metrics { name } => {
+                Ok(QueryOutcome::Metrics(self.metrics(name.as_deref())?))
+            }
+        }
+    }
+}
+
+/// Result of executing a structured query.
+#[derive(Debug)]
+pub enum QueryOutcome {
+    /// Symbol listing (search, callers, callees, impact, dead code).
+    Symbols(Vec<SymbolResult>),
+    /// Architecture metrics rows.
+    Metrics(Vec<FunctionMetrics>),
+    /// Call-graph cycles.
+    Cycles(Vec<CallCycle>),
 }
 
 #[cfg(test)]
@@ -640,7 +756,8 @@ mod tests {
         let dir = TempDir::new().unwrap();
         let file_path = dir.path().join("src/lib.rs");
         std::fs::create_dir_all(file_path.parent().unwrap()).unwrap();
-        std::fs::write(&file_path, "pub fn hello() {}").unwrap();
+        // Multi-line source so start_line/end_line evidence is in range.
+        std::fs::write(&file_path, "\n\npub fn hello() {\n    // body\n}\n").unwrap();
 
         let backend = Box::new(SqliteBackend::in_memory().unwrap());
         let mut storage = RepositoryStorage::open(backend, "verify-test").unwrap();
@@ -659,7 +776,7 @@ mod tests {
                 42..100,
                 3,
                 5,
-                7,
+                5,
                 20,
                 Language::Rust,
             ),
@@ -809,5 +926,49 @@ mod tests {
         assert!(engine.find_callers("hello").unwrap().is_empty());
         assert!(engine.find_callees("hello").unwrap().is_empty());
         assert!(engine.impact_analysis("hello", Some(3)).unwrap().is_empty());
+    }
+
+    #[test]
+    fn execute_routes_callers_prefix() {
+        let engine = setup_engine();
+        let out = engine.execute("callers:hello").unwrap();
+        assert!(matches!(out, QueryOutcome::Symbols(_)));
+    }
+
+    #[test]
+    fn execute_metrics_returns_rows() {
+        let engine = setup_engine();
+        let out = engine.execute("metrics").unwrap();
+        match out {
+            QueryOutcome::Metrics(m) => {
+                assert_eq!(m.len(), 1);
+                assert_eq!(m[0].name, "hello");
+                assert_eq!(m[0].fan_in, 0);
+                assert_eq!(m[0].fan_out, 0);
+            }
+            _ => panic!("expected metrics"),
+        }
+    }
+
+    #[test]
+    fn execute_dead_lists_unreferenced() {
+        let engine = setup_engine();
+        let out = engine.execute("dead").unwrap();
+        match out {
+            QueryOutcome::Symbols(s) => {
+                assert!(s.iter().any(|x| x.name == "hello"));
+            }
+            _ => panic!("expected symbols"),
+        }
+    }
+
+    #[test]
+    fn verify_source_rejects_bad_line() {
+        let dir = TempDir::new().unwrap();
+        let path = dir.path().join("f.rs");
+        std::fs::write(&path, "fn a() {}\n").unwrap();
+        assert!(verify_source_evidence(&path, 1, 1, Some("a")));
+        assert!(!verify_source_evidence(&path, 99, 99, None));
+        assert!(!verify_source_evidence(&path, 1, 1, Some("missing_name")));
     }
 }

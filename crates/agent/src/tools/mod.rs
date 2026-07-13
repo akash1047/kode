@@ -192,6 +192,35 @@ pub fn tool_definitions(has_query: bool) -> Vec<ToolDefinition> {
                 }),
             },
         });
+        tools.push(ToolDefinition {
+            kind: "function".into(),
+            function: ToolFunction {
+                name: "function_metrics".into(),
+                description: "Fan-in / fan-out metrics for functions (optional name filter)."
+                    .into(),
+                parameters: json!({
+                    "type": "object",
+                    "properties": {
+                        "name": {
+                            "type": "string",
+                            "description": "Optional exact function name"
+                        }
+                    }
+                }),
+            },
+        });
+        tools.push(ToolDefinition {
+            kind: "function".into(),
+            function: ToolFunction {
+                name: "dead_code".into(),
+                description:
+                    "List functions with no recorded callers (heuristic unreferenced code).".into(),
+                parameters: json!({
+                    "type": "object",
+                    "properties": {}
+                }),
+            },
+        });
     }
 
     tools
@@ -334,6 +363,46 @@ fn execute_inner(
                 Ok(lines.join("\n"))
             }
         }
+        "function_metrics" => {
+            let index = index.ok_or_else(|| {
+                "No knowledge graph index available. Run `kode scan` first.".to_string()
+            })?;
+            let name_filter = args.get("name").and_then(|v| v.as_str());
+            let rows = index.metrics(name_filter);
+            if rows.is_empty() {
+                Ok("No function metrics.".into())
+            } else {
+                let mut lines = vec![format!("function metrics: {} row(s)", rows.len())];
+                for (name, fan_in, fan_out, path, line) in rows.iter().take(80) {
+                    lines.push(format!(
+                        "  - {name} fan_in={fan_in} fan_out={fan_out} at {}:{}",
+                        path.display(),
+                        line
+                    ));
+                }
+                Ok(lines.join("\n"))
+            }
+        }
+        "dead_code" => {
+            let index = index.ok_or_else(|| {
+                "No knowledge graph index available. Run `kode scan` first.".to_string()
+            })?;
+            let results = index.dead_code();
+            if results.is_empty() {
+                Ok("No unreferenced functions found.".into())
+            } else {
+                let mut lines = vec![format!("dead/unreferenced candidates: {}", results.len())];
+                for s in results.iter().take(80) {
+                    lines.push(format!(
+                        "  - {} at {}:{}",
+                        s.name,
+                        s.file_path.display(),
+                        s.start_line
+                    ));
+                }
+                Ok(lines.join("\n"))
+            }
+        }
         other => Err(format!("unknown tool: {other}")),
     }
 }
@@ -404,5 +473,7 @@ mod tests {
         assert!(defs.iter().any(|t| t.function.name == "find_callers"));
         assert!(defs.iter().any(|t| t.function.name == "find_callees"));
         assert!(defs.iter().any(|t| t.function.name == "impact_analysis"));
+        assert!(defs.iter().any(|t| t.function.name == "function_metrics"));
+        assert!(defs.iter().any(|t| t.function.name == "dead_code"));
     }
 }

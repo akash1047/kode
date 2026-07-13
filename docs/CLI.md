@@ -6,10 +6,25 @@ This document describes the **kode** command-line interface.
 
 The CLI application is built on a two-layer architecture:
 
-1. **Application layer** (`kode-app` service) — owns the scan pipeline lifecycle: repository discovery, source loading, parsing, and statistics collection. Exposes `run_scan()`, `ScanResult`, and `ScanStatistics`.
-2. **Presenter/Formatter layer** (`kode-cli` tools) — presenter structs (`ScanView`, `StatusView`, `FilesView`) transform domain types into display models; formatter functions render those models as text.
+1. **Application layer** (`kode-app` service) — owns the scan pipeline lifecycle: repository discovery, source loading, parsing, fact extraction, graph construction, and persistence. Exposes `run_scan()`, `ScanResult`, and `ScanStatistics`.
+2. **Presenter/Formatter layer** (`kode-cli` tools) — presenter structs transform domain types into display models; formatter functions render those models as text or JSON.
 
-The `scan`, `status`, and `files` subcommands are wired to the application pipeline and produce real results. The remaining subcommands (`symbols`, `query`, `chat`, `cache`, `config`, `mcp`) accept and validate arguments but dispatch to a placeholder handler.
+**All listed subcommands are implemented** and wired to the application / query / agent / MCP layers:
+
+| Command | Status |
+|---------|--------|
+| `scan` | Full pipeline; fingerprint-based incremental skip when unchanged |
+| `status` | Cache-backed graph stats |
+| `files` | Files from knowledge graph |
+| `symbols` | Entity listing with optional language filter |
+| `query` | Intent router: search, callers, callees, impact, metrics, dead, cycles |
+| `export` | DOT / GraphML |
+| `chat` | Agent TUI + one-shot `-m` |
+| `cache` | status / clear |
+| `config` | init / get / set |
+| `mcp serve` | MCP server (8 tools) |
+
+Flags not yet fully implemented: `--watch` (exits with error), `--threads` (accepted, unused).
 
 ---
 
@@ -22,6 +37,7 @@ kode
 ├── files                  # Explore indexed repository files
 ├── symbols                # Explore extracted symbols
 ├── query <QUERY>          # Query repository knowledge
+├── export                 # Export graph (dot | graphml)
 ├── chat
 │   ├── (no args)          # Start interactive chat session
 │   └── -m <message>       # Ask a single question and exit
@@ -60,27 +76,22 @@ Global options are accepted by all subcommands.
 
 ### scan
 
-Discover repository structure, load source files, and parse supported languages.
+Discover repository structure, parse supported languages, extract facts, build the knowledge graph, and persist a revision under `.kode/cache.db`.
 
-Executes the full scan pipeline via `kode_app::run_scan()`:
-1. Repository discovery (workspace detection, filesystem traversal, manifest discovery, language detection)
-2. Source inventory loading
-3. Parsing with language-specific parsers (currently Rust via tree-sitter)
-
-Produces a `RepositorySnapshot` and scan statistics (files discovered, parsed, skipped, recovered, failed).
+When the content fingerprint (paths + sizes + mtimes) matches the last stored revision, stages 2–5 are **skipped** (`cache hit`). Use `--full` to clear the cache and rebuild.
 
 ```sh
 kode scan [PATH] [OPTIONS]
 ```
 
 Options:
-- `--full` — Ignore incremental state and rebuild from scratch
-- `--watch` — Monitor repository for filesystem changes
-- `--threads <N>` — Worker threads
+- `--full` — Clear cache and rebuild from scratch
+- `--watch` — Not implemented yet (errors)
+- `--threads <N>` — Accepted but unused (scan is single-threaded)
 
 ### status
 
-Show repository scan results. Executes the scan pipeline and displays repository metadata, file statistics, language breakdown, and parse statistics (parsed, recovered, skipped, failed).
+Show repository index status from the local cache (does not re-scan).
 
 ```sh
 kode status
@@ -88,185 +99,87 @@ kode status
 
 ### files
 
-List discovered files from the scan pipeline with optional language filtering.
+List files known to the knowledge graph with optional language filtering.
 
 ```sh
 kode files [OPTIONS]
 ```
 
-Options:
-- `--language <LANG>` — Filter by language
-- `--modified` — Show only modified files
-- `--ignored` — Show ignored files
-
 ### symbols
 
-Explore extracted language symbols (functions, types, traits, classes, etc.). Planned — currently a placeholder handler.
+List extracted language symbols (functions, types, traits, modules, etc.).
 
 ```sh
 kode symbols [OPTIONS]
 ```
 
-Options:
-- `--language <LANG>` — Filter by language
-
 ### query
 
-Query repository knowledge. Planned — currently a placeholder handler.
+Deterministic queries against the knowledge graph. Intent is resolved by prefix:
+
+| Query | Meaning |
+|-------|---------|
+| `name` / prefix | Symbol search |
+| `callers:NAME` | Incoming call edges |
+| `callees:NAME` | Outgoing call edges |
+| `impact:NAME` | Reverse-call impact BFS (default depth 8) |
+| `impact:NAME:N` | Impact with max depth N |
+| `metrics` / `metrics:NAME` | Fan-in / fan-out / instability |
+| `dead` | Heuristic unreferenced functions |
+| `cycles` | Call-graph SCCs (cycles) |
 
 ```sh
-kode query "<query>"
+kode query "run_scan"
+kode query "callers:run_scan"
+kode query "metrics"
+kode query "dead"
+kode query "cycles"
+```
+
+### export
+
+Export the indexed knowledge graph.
+
+```sh
+kode export --format dot
+kode export --format graphml -o graph.xml
 ```
 
 ### chat
 
-Start an interactive repository assistant session. Queries the LLM (OpenAI default) with code evidence from the knowledge graph.
+Interactive repository assistant (agent TUI) with sandboxed FS tools and symbol/call-graph tools when an index exists.
 
 ```sh
-kode chat [OPTIONS]
+kode chat
+kode chat -m "Where is run_scan defined?"
 ```
 
-Options:
-- `-m, --message <TEXT>` — Ask one question and exit
+Configure via `.kode/config.toml` (`chat.provider`, `chat.model`, `chat.api_key`, `chat.api_base`) or env (`OPENAI_API_KEY`, `OLLAMA_API_KEY`, `OPENAI_BASE_URL`).
 
-### cache
+### cache / config / mcp
 
-Manage the local repository cache. Planned — currently a placeholder handler.
-
-```sh
-kode cache <COMMAND>
-```
-
-Commands:
-- `status` — Show cache information
-- `clear` — Remove cached repository data
-
-### config
-
-Manage kode configuration. Planned — currently a placeholder handler.
-
-```sh
-kode config <COMMAND>
-```
-
-Commands:
-- `init` — Create configuration
-- `get <key>` — Read a configuration value
-- `set <key> <value>` — Update a configuration value
-
-### mcp
-
-Run or manage the MCP server. Planned — currently a placeholder handler.
-
-```sh
-kode mcp <COMMAND>
-```
-
-Commands:
-- `serve <path>` — Start the MCP server
-
-All subcommands accept global options (see above).
+Implemented as above. MCP tools: `find_symbol`, `search_symbols`, `get_symbol_details`, `symbols_by_kind`, `read_file`, `find_callers`, `find_callees`, `impact_analysis`.
 
 ---
 
 ## Examples
 
-**Scan the current repository:**
-```sh
-kode scan
-```
-
-**Scan a specific repository:**
-```sh
-kode scan /path/to/repo --full
-```
-
-**Show repository status:**
-```sh
-kode status
-```
-
-**List indexed files by language:**
-```sh
-kode files --language rust
-```
-
-**List extracted symbols:**
-```sh
-kode symbols --language python
-```
-
-**Query repository knowledge:**
-```sh
-kode query "functions named parse"
-```
-
-**Start an interactive chat session:**
-```sh
-kode chat
-```
-
-**Ask a single question:**
-```sh
-kode chat -m "Where is authentication implemented?"
-```
-
-**Run the MCP server:**
-```sh
-kode mcp serve .
-```
-
-**Check cache status:**
-```sh
-kode cache status
-```
-
-**Clear the repository cache:**
-```sh
-kode cache clear
-```
-
-**Initialize configuration:**
 ```sh
 kode config init
-kode config set api_key YOUR_KEY
-```
-
----
-
-## Environment Variables
-
-| Variable | Description |
-|----------|-------------|
-| `KODE_CACHE_DIR` | Custom cache directory path |
-
----
-
-## Output Conventions
-
-- Command output follows a consistent format for machine parsing where practical
-- Once LLM integration is implemented, all answers will include `path:line` citations verified against the live repository
-
----
-
-## Common Workflows
-
-**First-time scan:**
-```sh
 kode scan
+kode scan          # second run: cache hit if nothing changed
 kode status
-```
-
-**Daily use:**
-```sh
-kode scan
 kode files --language rust
+kode symbols
+kode query "impact:run_scan"
+kode export --format dot | head
+kode mcp serve .
 ```
 
 ---
 
 ## See Also
 
-- [DESIGN.md](../DESIGN.md) — System design
-- [MCP.md](MCP.md) — MCP server
-- [Documentation index](README.md)
+- [CLI_SPEC.md](CLI_SPEC.md) — clap help contract
+- [ROADMAP.md](ROADMAP.md) — milestones
+- [CHAT_UI.md](CHAT_UI.md) — chat agent design

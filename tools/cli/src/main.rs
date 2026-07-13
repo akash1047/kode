@@ -390,27 +390,48 @@ fn handle_symbols(
     Ok(presenter::symbols::SymbolsView::from_symbols(&results))
 }
 
+enum QueryDispatch {
+    Symbols(presenter::symbols::SymbolsView),
+    Analysis { text: String, json: String },
+}
+
 fn handle_query(
     path: Option<&str>,
     query: &str,
-) -> Result<presenter::symbols::SymbolsView, Box<dyn std::error::Error>> {
+) -> Result<QueryDispatch, Box<dyn std::error::Error>> {
     let storage = open_storage(path)?;
     let engine = QueryEngine::new(storage);
-
-    // Special call-graph / impact prefixes for the CLI.
-    let results = if let Some(name) = query.strip_prefix("callers:") {
-        engine.find_callers(name.trim())?
-    } else if let Some(name) = query.strip_prefix("callees:") {
-        engine.find_callees(name.trim())?
-    } else if let Some(name) = query.strip_prefix("impact:") {
-        engine.impact_analysis(name.trim(), Some(8))?
-    } else if let Some(name) = query.strip_prefix("who calls ") {
-        engine.find_callers(name.trim())?
-    } else {
-        engine.search_symbols(query, None)?
-    };
-
-    Ok(presenter::symbols::SymbolsView::from_symbols(&results))
+    match engine.execute(query)? {
+        kode_query::QueryOutcome::Symbols(results) => Ok(QueryDispatch::Symbols(
+            presenter::symbols::SymbolsView::from_symbols(&results),
+        )),
+        kode_query::QueryOutcome::Metrics(m) => {
+            let json = serde_json::json!({
+                "metrics": m.iter().map(|row| serde_json::json!({
+                    "name": row.name,
+                    "file": row.file_path.display().to_string(),
+                    "line": row.start_line,
+                    "fan_in": row.fan_in,
+                    "fan_out": row.fan_out,
+                    "instability_pct": row.instability_pct,
+                    "verified": row.verified,
+                })).collect::<Vec<_>>(),
+            });
+            Ok(QueryDispatch::Analysis {
+                text: kode_query::format_metrics(&m),
+                json: serde_json::to_string_pretty(&json).unwrap_or_else(|_| "{}".into()),
+            })
+        }
+        kode_query::QueryOutcome::Cycles(c) => {
+            let json = serde_json::json!({
+                "cycles": c.iter().map(|cy| &cy.members).collect::<Vec<_>>(),
+            });
+            Ok(QueryDispatch::Analysis {
+                text: kode_query::format_cycles(&c),
+                json: serde_json::to_string_pretty(&json).unwrap_or_else(|_| "{}".into()),
+            })
+        }
+    }
 }
 
 fn handle_export(
@@ -523,11 +544,20 @@ fn main() {
                     print!("{}", formatter::symbols::format(&o))
                 }
             }),
-        Commands::Query { query } => handle_query(cli.repo.as_deref(), query).map(|o| {
-            if cli.json {
-                print!("{}", formatter::json::format_symbols(&o))
-            } else {
-                print!("{}", formatter::symbols::format(&o))
+        Commands::Query { query } => handle_query(cli.repo.as_deref(), query).map(|o| match o {
+            QueryDispatch::Symbols(view) => {
+                if cli.json {
+                    print!("{}", formatter::json::format_symbols(&view))
+                } else {
+                    print!("{}", formatter::symbols::format(&view))
+                }
+            }
+            QueryDispatch::Analysis { text, json } => {
+                if cli.json {
+                    print!("{json}")
+                } else {
+                    print!("{text}")
+                }
             }
         }),
         Commands::Export { format, output } => {

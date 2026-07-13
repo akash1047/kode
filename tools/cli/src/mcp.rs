@@ -172,6 +172,52 @@ impl KodeHandler {
                         "required": ["path"]
                     })),
                 ),
+                Tool::new(
+                    "find_callers",
+                    "Find functions that call the named function",
+                    to_json_object(serde_json::json!({
+                        "type": "object",
+                        "properties": {
+                            "name": {
+                                "type": "string",
+                                "description": "Exact function name"
+                            }
+                        },
+                        "required": ["name"]
+                    })),
+                ),
+                Tool::new(
+                    "find_callees",
+                    "Find functions called by the named function",
+                    to_json_object(serde_json::json!({
+                        "type": "object",
+                        "properties": {
+                            "name": {
+                                "type": "string",
+                                "description": "Exact function name"
+                            }
+                        },
+                        "required": ["name"]
+                    })),
+                ),
+                Tool::new(
+                    "impact_analysis",
+                    "List functions that transitively call the named function",
+                    to_json_object(serde_json::json!({
+                        "type": "object",
+                        "properties": {
+                            "name": {
+                                "type": "string",
+                                "description": "Exact function name"
+                            },
+                            "max_depth": {
+                                "type": "integer",
+                                "description": "Max reverse-call depth (default 8)"
+                            }
+                        },
+                        "required": ["name"]
+                    })),
+                ),
             ],
             next_cursor: None,
             meta: None,
@@ -186,6 +232,9 @@ impl KodeHandler {
             "get_symbol_details" => self.handle_get_symbol_details(&args),
             "symbols_by_kind" => self.handle_symbols_by_kind(&args),
             "read_file" => self.handle_read_file(&args),
+            "find_callers" => self.handle_callers(&args),
+            "find_callees" => self.handle_callees(&args),
+            "impact_analysis" => self.handle_impact(&args),
             _ => Err(ErrorData::invalid_params("unknown tool", None)),
         }
     }
@@ -318,6 +367,65 @@ impl KodeHandler {
         let excerpt = lines[start..end].join("\n");
         Ok(CallToolResult::success(vec![ContentBlock::text(excerpt)]))
     }
+
+    fn handle_callers(&self, args: &JsonObject) -> Result<CallToolResult, ErrorData> {
+        let name = args
+            .get("name")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| ErrorData::invalid_params("missing 'name' field", None))?;
+        let results = self.engine().find_callers(name).map_err(to_rmcp_error)?;
+        Ok(CallToolResult::success(vec![ContentBlock::text(
+            serde_json::to_string_pretty(
+                &results
+                    .into_iter()
+                    .map(|s| format_symbol(&s))
+                    .collect::<Vec<_>>(),
+            )
+            .unwrap_or_else(|_| "[]".into()),
+        )]))
+    }
+
+    fn handle_callees(&self, args: &JsonObject) -> Result<CallToolResult, ErrorData> {
+        let name = args
+            .get("name")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| ErrorData::invalid_params("missing 'name' field", None))?;
+        let results = self.engine().find_callees(name).map_err(to_rmcp_error)?;
+        Ok(CallToolResult::success(vec![ContentBlock::text(
+            serde_json::to_string_pretty(
+                &results
+                    .into_iter()
+                    .map(|s| format_symbol(&s))
+                    .collect::<Vec<_>>(),
+            )
+            .unwrap_or_else(|_| "[]".into()),
+        )]))
+    }
+
+    fn handle_impact(&self, args: &JsonObject) -> Result<CallToolResult, ErrorData> {
+        let name = args
+            .get("name")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| ErrorData::invalid_params("missing 'name' field", None))?;
+        let max_depth = args
+            .get("max_depth")
+            .and_then(|v| v.as_u64())
+            .map(|n| n as usize)
+            .or(Some(8));
+        let results = self
+            .engine()
+            .impact_analysis(name, max_depth)
+            .map_err(to_rmcp_error)?;
+        Ok(CallToolResult::success(vec![ContentBlock::text(
+            serde_json::to_string_pretty(
+                &results
+                    .into_iter()
+                    .map(|s| format_symbol(&s))
+                    .collect::<Vec<_>>(),
+            )
+            .unwrap_or_else(|_| "[]".into()),
+        )]))
+    }
 }
 
 fn to_rmcp_error(e: QueryError) -> ErrorData {
@@ -374,16 +482,19 @@ mod tests {
     }
 
     #[test]
-    fn test_list_tools_returns_five_tools() {
+    fn test_list_tools_returns_eight_tools() {
         let handler = make_handler_with_empty_graph();
         let result = handler.make_tool_list();
-        assert_eq!(result.tools.len(), 5);
+        assert_eq!(result.tools.len(), 8);
         let names: Vec<&str> = result.tools.iter().map(|t| t.name.as_ref()).collect();
         assert!(names.contains(&"find_symbol"));
         assert!(names.contains(&"search_symbols"));
         assert!(names.contains(&"get_symbol_details"));
         assert!(names.contains(&"symbols_by_kind"));
         assert!(names.contains(&"read_file"));
+        assert!(names.contains(&"find_callers"));
+        assert!(names.contains(&"find_callees"));
+        assert!(names.contains(&"impact_analysis"));
     }
 
     fn make_request(name: &'static str, args: JsonObject) -> CallToolRequestParams {

@@ -11,108 +11,98 @@ This document describes the evolution of **kode** organized by milestone rather 
 | | |
 |---|---|
 | Status | ✓ Complete |
-| Delivered | Public CLI contract, command hierarchy, argument parsing, help generation, command dispatch, placeholder handlers, parser validation |
-| Next | Repository discovery and indexing |
+| Delivered | Public CLI contract, command hierarchy, argument parsing, help generation, command dispatch |
 
 ### Milestone 2 — Acquisition & Analysis
 
 | | |
 |---|---|
 | Status | ✓ Complete |
-| Delivered | Stage 1-3 pipeline: repository discovery, parsing, fact extraction. Immutable snapshot, syntax tree inventory, and repository facts artifacts. Stable entity identification, source location evidence, extractors for all Rust entity kinds. |
+| Delivered | Stage 1-3 pipeline: repository discovery, parsing, fact extraction. Immutable snapshot, syntax tree inventory, and repository facts. Rust entity kinds + call sites. |
 
 ### Milestone 3 — Knowledge Graph
 
 | | |
 |---|---|
 | Status | ✓ Complete |
-| Delivered | Stage 4: Graph construction and validation. Deterministic graph construction with structural/entity identity separation, evidence-backed nodes and relationships, decomposed builder architecture, comprehensive validation invariant checks. Deterministic graph serialization with round-trip fidelity. |
+| Delivered | Stage 4: Graph construction and validation, `Calls` edges, deterministic serialization |
 
 ### Milestone 4 — Storage
 
 | | |
 |---|---|
 | Status | ✓ Complete |
-| Delivered | Stage 5: Graph persistence. Revisioned persistence with a backend abstraction, repository-scoped storage, schema versioning, immutable graph revisions, and cache state tracking. Content-addressed deterministic persistence with transactional guarantees. Graph serialization delegated to the graph crate's deterministic format. |
-
----
-
-## Current Milestone
+| Delivered | Stage 5: SQLite revisions, backend abstraction, content fingerprint for incremental skip |
 
 ### Milestone 5 — Analysis & Query
 
 | | |
 |---|---|
 | Status | ✓ Complete |
-| Delivered | Pipeline wiring (extraction→graph→storage), query engine with symbol search and evidence verification, call graph relationship kind, graph export (DOT, GraphML), CLI refinements (symbols, query, cache status/clear, config init/get/set) |
+| Delivered | Pipeline wiring, query engine, export (DOT/GraphML), symbols/query/cache/config CLI |
 
----
-
-### Milestone 5b — Interfaces & Chat (complete)
+### Milestone 5b — Interfaces & Chat
 
 | | |
 |---|---|
 | Status | ✓ Complete |
-| Delivered | MCP server, query/symbols CLI, agent TUI chat (tools + symbol index), graph export (DOT/GraphML), cache-backed status/files, `.kodeignore` |
-
----
-
-## Current Milestone
+| Delivered | MCP server, agent TUI chat (tools + symbol index), graph export, cache-backed status/files, `.kodeignore` |
 
 ### Milestone 6 — Advanced Analysis
 
 | | |
 |---|---|
-| Status | 🔄 In Progress |
-| Delivered so far | Rust call-site extraction, `Calls` graph edges, `find_callers` / `find_callees` / `impact_analysis` (query + agent tools + CLI prefixes) |
-| Remaining | Architecture metrics, incremental indexing, multi-language call extraction |
+| Status | ✓ Complete (product scope) |
+| Delivered | Rust call-site extraction, `Calls` edges, find_callers / find_callees / impact_analysis, architecture metrics (fan-in/out, instability), dead-code heuristic, call-graph cycles, intent router, stronger evidence verification, whole-repo fingerprint incremental skip |
 
-Planned deliverables:
+Remaining beyond M6 product scope:
 
-- ~~Call graph — extract `Calls` relationships from Rust AST~~ (done for free-function / method name resolution)
-- ~~Impact analysis — reverse call BFS~~ (done; depth-bounded)
-- Architecture metrics — fan-in, fan-out, cohesion
-- Incremental indexing — only reprocess changed files
+- Per-file incremental reparse (only reprocess changed files; merge facts)
+- Multi-language parsers beyond Rust
+- `--watch` / parallel `--threads`
+
+---
 
 ## Near Term
 
-- Architecture metrics — fan-in, fan-out, cohesion, and instability metrics
-- Dead code detection — identify unused symbols with evidence
-- Dependency analysis — compute dependency trees and detect cycles
-- Multi-repository indexing — index and query across related repositories
-- LSP integration — expose repository knowledge through the Language Server Protocol
+- Per-file incremental indexing — reparse only changed files and merge facts
+- Multi-language extractors — Python / TypeScript (registry already extensible)
+- Dependency analysis — `Imports` / `DependsOn` edges from `use` paths
+- `--watch` and parallel scan workers
+- Multi-repository indexing
+- LSP integration
 
 ---
 
 ## Future
 
-- IDE integrations — VS Code extension, JetBrains plugin, and editor-agnostic interfaces
-- Web UI — browser-based repository exploration and querying
-- GraphQL API — structured query API for programmatic access
-- Git history analysis — track symbol evolution across commits
-- Code ownership analysis — map repository entities to contributors
-- Test coverage integration — associate tests with tested entities
-- CI integration — run analysis as part of continuous integration
-- Security scanning — detect vulnerable dependency patterns
+- IDE integrations — VS Code extension, JetBrains plugin
+- Web UI — browser-based exploration
+- GraphQL API
+- Git history analysis
+- Code ownership analysis
+- Test coverage integration
+- CI product integration
+- Security scanning patterns
 
 ---
 
 ## Research
 
-- Runtime trace integration — associate runtime behavior with graph entities
-- Performance profiling — link profile data to source locations
-- Code generation tracking — identify generated code and its generators
-- Natural language query parsing — map questions directly to graph traversals
+- Runtime trace integration
+- Performance profiling linkage
+- Code generation tracking
+- Natural language query parsing (ML)
 
 ---
 
 ## Non-Goals
 
-- Code generation — kode will not generate code. Its purpose is understanding existing code.
-- AI training — kode will not use repository data to train or fine-tune models.
-- Cloud dependency — kode remains local-first. Cloud features are always optional.
-- Real-time collaboration — kode is a single-user tool. Multi-user features are not planned.
-- Proprietary lock-in — all formats and protocols remain open and documented.
+- Code generation — kode will not generate code
+- AI training on user repositories
+- Cloud dependency as a requirement (local-first)
+- Real-time multi-user collaboration
+- Proprietary lock-in — formats and protocols stay open
 
 ---
 

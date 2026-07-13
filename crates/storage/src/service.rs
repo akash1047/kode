@@ -75,6 +75,11 @@ impl RepositoryStorage {
         self.backend.cache_metadata(&self.repository_id)
     }
 
+    /// Return the stored repository content fingerprint used for incremental skip.
+    pub fn fingerprint(&self) -> Result<Option<String>, StorageError> {
+        self.backend.repository_fingerprint(&self.repository_id)
+    }
+
     /// Remove all cached data for this repository.
     pub fn clear(&mut self) -> Result<(), StorageError> {
         self.backend.remove_repository(&self.repository_id)

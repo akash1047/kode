@@ -14,6 +14,7 @@ pub struct ScanView {
     pub skipped: usize,
     pub failed: usize,
     pub elapsed_secs: f64,
+    pub cache_hit: bool,
 }
 
 impl ScanView {
@@ -32,6 +33,7 @@ impl ScanView {
             skipped: stats.skipped,
             failed: stats.failed,
             elapsed_secs: stats.elapsed.as_secs_f64(),
+            cache_hit: stats.cache_hit,
         }
     }
 }
@@ -77,6 +79,7 @@ mod tests {
                 graph_relationships: 0,
                 storage_revision: None,
                 storage_path: None,
+                cache_hit: false,
             },
             graph: None,
             revision: None,

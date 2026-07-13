@@ -33,7 +33,7 @@ Every stage produces an immutable artifact consumed by the next stage.
 
 ---
 
-> **Implementation status:** Stage 1 (Repository Discovery), Stage 2 (Parsing), Stage 3 (Fact Extraction), Stage 4 (Graph Construction + Validation), and Stage 5 (Persistence) are implemented. Stages 6–8 document the architectural design and are planned as future work.
+> **Implementation status:** Stages 1–5 are implemented end-to-end. Query execution and graph analysis (callers/callees/impact/metrics/dead/cycles) are implemented in `kode-query` and exposed via CLI/MCP/chat. Per-file incremental reparse and multi-language extractors remain near-term work.
 
 ## Design Principles
 
@@ -103,8 +103,8 @@ Later stages organize, analyze, and present those facts.
 | Graph Construction | Repository Facts | Knowledge Graph | Graph | ✓ Implemented |
 | Graph Validation | Knowledge Graph | Validated Graph | Graph | ✓ Implemented |
 | Persistence | Validated Graph | Graph Revision | Storage | ✓ Implemented |
-| Analysis | Graph Revision | Derived Facts | Analysis | Planned |
-| Query Execution | Graph Revision + Repository | Evidence-backed Results | Query Engine | Planned |
+| Analysis | Graph Revision | Derived Facts | Query / Analysis | Partial (calls, metrics, dead, cycles) |
+| Query Execution | Graph Revision + Repository | Evidence-backed Results | Query Engine | ✓ Implemented |
 
 Each stage owns exactly one transformation.
 

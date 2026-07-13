@@ -125,14 +125,15 @@ Dependencies flow downward. No circular dependencies are permitted.
 **Path:** `crates/query/`
 
 **Current State**
-- Placeholder crate.
+- Query engine over persisted knowledge graphs
+- Deterministic intent resolution (`callers:`, `callees:`, `impact:`, `metrics`, `dead`, `cycles`, symbol search)
+- Evidence verification (file exists, line range, optional name presence)
+- Call-graph queries, impact BFS, fan-in/out metrics, dead-code heuristic, cycle detection
+- Graph export helpers (DOT / GraphML via graph crate)
 
 **Planned Responsibility**
-- Intent resolution
-- Graph traversal
-- Evidence retrieval and verification
-- Context assembly
-- LLM interaction
+- Richer context assembly for LLM consumers
+- Import/dependency graph queries
 
 ---
 
@@ -174,16 +175,14 @@ Dependencies flow downward. No circular dependencies are permitted.
 
 **Current State**
 - CLI argument parsing with subcommand routing
-- Command hierarchy: scan, status, files, symbols, query, chat, cache, config, mcp
-- **Implemented commands**: `scan` — runs full discovery/parsing pipeline; `status` — displays scan results; `files` — lists files with optional language filtering
-- **Placeholder commands**: `symbols`, `query`, `chat`, `cache`, `config`, `mcp` — validate arguments, print placeholder message
-- Presenter and formatter layers transforming domain types into display models
-- Comprehensive test coverage for argument parsing, routing, help text, and global flags
-- Global options: `--repo`, `--verbose`, `--quiet`, `--json`, `--no-color`
+- Command hierarchy: scan, status, files, symbols, query, export, chat, cache, config, mcp
+- All subcommands implemented (scan pipeline, cache-backed status/files/symbols/query, agent chat TUI, MCP server)
+- Presenter and formatter layers (text + JSON)
+- Global options: `--repo`, `--verbose`, `--quiet`, `--json`, `--no-color`, `--log-file`
 
 **Planned Responsibility**
-- Wire remaining subcommands to application services
-- Interactive REPL
+- `--watch` implementation
+- Parallel scan via `--threads`
 
 ---
 

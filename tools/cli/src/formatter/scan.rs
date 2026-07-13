@@ -4,22 +4,26 @@ use super::style;
 
 pub fn format(view: &ScanView) -> String {
     let mut out = style::header("scan");
-    out.push_str(
-        &format!(
-            "  ● {} — {} — {}\n  ● {} files · {} dirs · {} manifests\n  ● {} parsed · {} recovered · {} skipped · {} failed\n  ● {:.3}s\n",
-            view.repository_root,
-            view.workspace,
-            view.languages,
-            view.files_discovered,
-            view.directories,
-            view.manifests,
-            view.parsed,
-            view.recovered,
-            view.skipped,
-            view.failed,
-            view.elapsed_secs,
-        )
-    );
+    let cache_note = if view.cache_hit {
+        " · cache hit (incremental skip)"
+    } else {
+        ""
+    };
+    out.push_str(&format!(
+        "  ● {} — {} — {}\n  ● {} files · {} dirs · {} manifests\n  ● {} parsed · {} recovered · {} skipped · {} failed\n  ● {:.3}s{}\n",
+        view.repository_root,
+        view.workspace,
+        view.languages,
+        view.files_discovered,
+        view.directories,
+        view.manifests,
+        view.parsed,
+        view.recovered,
+        view.skipped,
+        view.failed,
+        view.elapsed_secs,
+        cache_note,
+    ));
     out
 }
 
@@ -41,6 +45,7 @@ mod tests {
             skipped: 1,
             failed: 0,
             elapsed_secs: 1.5,
+            cache_hit: false,
         }
     }
 

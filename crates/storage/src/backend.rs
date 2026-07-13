@@ -54,6 +54,9 @@ pub trait StorageBackend: Send {
     /// Return cache metadata for a repository.
     fn cache_metadata(&self, repository_id: &str) -> Result<CacheMetadata, StorageError>;
 
+    /// Return the stored content fingerprint for a repository, if any.
+    fn repository_fingerprint(&self, repository_id: &str) -> Result<Option<String>, StorageError>;
+
     /// Return the schema version detected in the backend.
     fn schema_version(&self) -> Result<SchemaVersion, StorageError>;
 }

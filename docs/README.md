@@ -2,13 +2,11 @@
 
 This index describes every document in the **kode** documentation set.
 
-Architecture documents describe the intended system. The Acquisition,
-Parsing, Fact Extraction, Knowledge Graph, and Storage subsystems are
-implemented — see [ACQUISITION.md](ACQUISITION.md),
-[ANALYSIS.md](ANALYSIS.md), [KNOWLEDGE_GRAPH.md](KNOWLEDGE_GRAPH.md), and
-[STORAGE.md](STORAGE.md) for the current state. Remaining subsystems
-(Query Engine, Analysis graph algorithms, MCP) are planned and follow the
-boundaries established here.
+Architecture documents describe the intended system. Acquisition, Parsing,
+Fact Extraction, Knowledge Graph, Storage, Query Engine, MCP, and Chat are
+implemented for the Rust-first product path — see subsystem docs and
+[ROADMAP.md](ROADMAP.md). Near-term gaps: per-file incremental reparse,
+multi-language extractors, `--watch` / parallel scan.
 
 Contributors should read the architecture documents to understand the
 design intent, then refer to the contributor documents for workspace

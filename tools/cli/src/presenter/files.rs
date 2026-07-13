@@ -78,6 +78,7 @@ mod tests {
                 graph_relationships: 0,
                 storage_revision: None,
                 storage_path: None,
+                cache_hit: false,
             },
             graph: None,
             revision: None,

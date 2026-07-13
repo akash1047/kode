@@ -17,6 +17,7 @@ pub fn format_scan(view: &ScanView) -> String {
         "skipped": view.skipped,
         "failed": view.failed,
         "elapsed_secs": view.elapsed_secs,
+        "cache_hit": view.cache_hit,
     });
     serde_json::to_string_pretty(&json).unwrap_or_else(|_| "{}".into())
 }
