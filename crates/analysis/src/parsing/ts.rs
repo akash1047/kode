@@ -64,6 +64,7 @@ pub(crate) fn parse_source(
 fn resolve_language(language: Language) -> Result<tree_sitter::Language, Error> {
     match language {
         Language::Rust => Ok(tree_sitter_rust::LANGUAGE.into()),
+        Language::Python => Ok(tree_sitter_python::LANGUAGE.into()),
         _ => Err(Error::UnsupportedLanguage(language.to_string())),
     }
 }

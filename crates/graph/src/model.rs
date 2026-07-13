@@ -317,6 +317,8 @@ pub enum RelationshipKind {
     Defines,
     /// One entity calls another (resolved during analysis).
     Calls,
+    /// Import / dependency edge (e.g. file or module imports another).
+    Imports,
 }
 
 impl RelationshipKind {
@@ -326,6 +328,7 @@ impl RelationshipKind {
             RelationshipKind::Declares => "declares",
             RelationshipKind::Defines => "defines",
             RelationshipKind::Calls => "calls",
+            RelationshipKind::Imports => "imports",
         }
     }
 }
@@ -344,6 +347,7 @@ impl std::str::FromStr for RelationshipKind {
             "declares" => Ok(RelationshipKind::Declares),
             "defines" => Ok(RelationshipKind::Defines),
             "calls" => Ok(RelationshipKind::Calls),
+            "imports" => Ok(RelationshipKind::Imports),
             other => Err(format!("unknown relationship kind: {other}")),
         }
     }

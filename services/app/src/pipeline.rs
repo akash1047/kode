@@ -31,11 +31,14 @@
 //! - **Third-party integrations** — may consume [`ScanResult`] via the public
 //!   crate interface.
 
+use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::time::{Duration, Instant, SystemTime};
 
 use kode_acquisition::{Repository, RepositoryDiscovery, RepositorySnapshot};
-use kode_analysis::extraction::{ExtractionOrchestrator, ExtractorRegistry, RepositoryFacts};
+use kode_analysis::extraction::{
+    ExtractionOrchestrator, ExtractorRegistry, FactsCache, RepositoryFacts,
+};
 use kode_analysis::parsing::{
     ParseOutcome, ParserRegistry, ParsingOrchestrator, SourceInventory, SyntaxTreeInventory,
 };
@@ -107,7 +110,8 @@ pub fn run_scan(path: Option<&str>) -> Result<ScanResult, Box<dyn std::error::Er
 
     tracing::info!("Stage 1: Discovery — discovering repository sources");
     let snapshot = RepositoryDiscovery::default().run(&repository)?;
-    let fingerprint = compute_content_fingerprint(&snapshot);
+    let file_hashes = compute_file_content_hashes(&repository, &snapshot)?;
+    let fingerprint = fingerprint_from_hashes(&file_hashes);
 
     // ── Incremental fast path ───────────────────────────────────────────
     if let Some((graph, revision)) = try_cache_hit(&repository, &fingerprint) {
@@ -153,29 +157,15 @@ pub fn run_scan(path: Option<&str>) -> Result<ScanResult, Box<dyn std::error::Er
         });
     }
 
-    // ── Stage 2: Parsing ────────────────────────────────────────────────
+    // ── Stages 2–3: Parse + extract (full or per-file incremental) ─────
 
-    let sources = SourceInventory::from_snapshot(&snapshot)?;
+    let (facts, parse_stats) = extract_facts_incremental(&repository, &snapshot, &file_hashes)?;
 
-    let parser_orchestrator = ParsingOrchestrator::new(ParserRegistry::default());
-    let tree_inventory = parser_orchestrator.run(&snapshot, &sources);
-
-    let parse_stats = collect_parse_stats(&snapshot, &tree_inventory);
-    tracing::info!(
-        "Stage 2: Parsing — parsed {} files, {} failed, {} skipped",
-        parse_stats.parsed,
-        parse_stats.failed,
-        parse_stats.skipped,
-    );
-
-    // ── Stage 3: Fact Extraction ────────────────────────────────────────
-
-    let extractor_orchestrator = ExtractionOrchestrator::new(ExtractorRegistry::default());
-    let facts: RepositoryFacts = extractor_orchestrator.run(&tree_inventory);
     let entity_count = facts.entity_count();
     tracing::info!(
-        "Stage 3: Fact extraction — extracted {} entities",
-        entity_count
+        "Stage 3: Fact extraction — extracted {} entities (parsed {} files)",
+        entity_count,
+        parse_stats.parsed
     );
 
     // ── Stage 4: Knowledge Graph Construction ───────────────────────────
@@ -205,7 +195,7 @@ pub fn run_scan(path: Option<&str>) -> Result<ScanResult, Box<dyn std::error::Er
     // ── Stage 5: Storage Persistence ────────────────────────────────────
 
     let (revision, storage_revision, storage_path) = if let Some(ref graph) = graph {
-        match persist_graph(&repository, graph, &fingerprint) {
+        match persist_graph_and_facts(&repository, graph, &fingerprint, &file_hashes, &facts) {
             Ok(rev) => (
                 Some(rev.clone()),
                 Some(rev.revision_id),
@@ -252,22 +242,149 @@ pub fn run_scan(path: Option<&str>) -> Result<ScanResult, Box<dyn std::error::Er
     })
 }
 
-/// Content fingerprint from discovered file paths, sizes, and mtimes.
-///
-/// Used to skip re-parse when the repository has not changed on disk.
-fn compute_content_fingerprint(snapshot: &RepositorySnapshot) -> String {
-    let mut files: Vec<_> = snapshot.files().iter().collect();
-    files.sort_by(|a, b| a.relative_path().cmp(b.relative_path()));
-    let mut hasher = Fnv1aHasher::new();
-    for f in files {
-        f.relative_path().to_string_lossy().hash(&mut hasher);
-        f.size().hash(&mut hasher);
-        if let Some(m) = f.modified() {
-            if let Ok(d) = m.duration_since(std::time::UNIX_EPOCH) {
-                d.as_secs().hash(&mut hasher);
-                d.subsec_nanos().hash(&mut hasher);
+/// Parse/extract only changed files when a prior facts cache exists.
+fn extract_facts_incremental(
+    repository: &Repository,
+    snapshot: &RepositorySnapshot,
+    file_hashes: &[(String, String)],
+) -> Result<(RepositoryFacts, ParseStats), Box<dyn std::error::Error>> {
+    let parser_orchestrator = ParsingOrchestrator::new(ParserRegistry::default());
+    let extractor_orchestrator = ExtractionOrchestrator::new(ExtractorRegistry::default());
+
+    let new_map: HashMap<String, String> = file_hashes.iter().cloned().collect();
+    let (old_facts, old_hashes) = load_facts_and_hashes(repository).unwrap_or((None, Vec::new()));
+
+    let mut changed: HashSet<PathBuf> = HashSet::new();
+    let mut deleted: HashSet<PathBuf> = HashSet::new();
+
+    if let Some(ref _old) = old_facts {
+        let old_map: HashMap<String, String> = old_hashes.into_iter().collect();
+        for (path, hash) in &new_map {
+            match old_map.get(path) {
+                Some(old_h) if old_h == hash => {}
+                _ => {
+                    changed.insert(PathBuf::from(path));
+                }
             }
         }
+        for path in old_map.keys() {
+            if !new_map.contains_key(path) {
+                deleted.insert(PathBuf::from(path));
+            }
+        }
+    }
+
+    let can_partial = old_facts.is_some() && (!changed.is_empty() || !deleted.is_empty());
+
+    if can_partial {
+        tracing::info!(
+            "Incremental reparse — {} changed, {} deleted files",
+            changed.len(),
+            deleted.len()
+        );
+        let mut drop_set = changed.clone();
+        drop_set.extend(deleted.iter().cloned());
+        let mut facts = old_facts.expect("checked").without_files(&drop_set);
+
+        if changed.is_empty() {
+            // Only deletions: no reparse needed.
+            let mut parse_stats = empty_parse_stats(snapshot);
+            parse_stats.skipped = snapshot.files().len();
+            return Ok((facts, parse_stats));
+        }
+
+        let sources = SourceInventory::from_snapshot_paths(snapshot, Some(&changed))?;
+        let tree_inventory = parser_orchestrator.run_filtered(snapshot, &sources, Some(&changed));
+        let mut parse_stats = collect_parse_stats(snapshot, &tree_inventory);
+        // Files not in the changed set were skipped intentionally.
+        parse_stats.skipped = snapshot
+            .files()
+            .len()
+            .saturating_sub(parse_stats.parsed + parse_stats.recovered + parse_stats.failed);
+        let new_facts = extractor_orchestrator.run(&tree_inventory);
+        facts.merge(new_facts);
+        return Ok((facts, parse_stats));
+    }
+
+    // Full parse + extract.
+    let sources = SourceInventory::from_snapshot(snapshot)?;
+    let tree_inventory = parser_orchestrator.run(snapshot, &sources);
+    let parse_stats = collect_parse_stats(snapshot, &tree_inventory);
+    tracing::info!(
+        "Stage 2: Parsing — parsed {} files, {} failed, {} skipped",
+        parse_stats.parsed,
+        parse_stats.failed,
+        parse_stats.skipped,
+    );
+    let facts = extractor_orchestrator.run(&tree_inventory);
+    Ok((facts, parse_stats))
+}
+
+fn empty_parse_stats(snapshot: &RepositorySnapshot) -> ParseStats {
+    ParseStats {
+        files_discovered: snapshot.files().len(),
+        directories: snapshot.directories().len(),
+        manifests: snapshot.manifests().len(),
+        languages: snapshot.languages().len(),
+        parsed: 0,
+        recovered: 0,
+        skipped: 0,
+        failed: 0,
+    }
+}
+
+/// Content hash of each file (relative path → FNV hex of bytes).
+fn compute_file_content_hashes(
+    repository: &Repository,
+    snapshot: &RepositorySnapshot,
+) -> Result<Vec<(String, String)>, Box<dyn std::error::Error>> {
+    let root = repository.root();
+    let mut out = Vec::with_capacity(snapshot.files().len());
+    for file in snapshot.files() {
+        let full = root.join(file.relative_path());
+        let bytes = std::fs::read(&full).unwrap_or_default();
+        let mut hasher = Fnv1aHasher::new();
+        bytes.hash(&mut hasher);
+        out.push((
+            file.relative_path().display().to_string(),
+            format!("{:016x}", hasher.finish()),
+        ));
+    }
+    out.sort_by(|a, b| a.0.cmp(&b.0));
+    Ok(out)
+}
+
+type FileHashList = Vec<(String, String)>;
+
+fn load_facts_and_hashes(
+    repository: &Repository,
+) -> Option<(Option<RepositoryFacts>, FileHashList)> {
+    let db_path = cache_db_path(repository);
+    if !db_path.exists() {
+        return None;
+    }
+    let backend = SqliteBackend::open(&db_path).ok()?;
+    let repo_id = repository
+        .identity()
+        .map(|id| id.as_str().to_string())
+        .unwrap_or_else(|| repository.root().display().to_string());
+    let storage = RepositoryStorage::open(Box::new(backend), &repo_id).ok()?;
+    let hashes = storage.load_file_hashes().ok().unwrap_or_default();
+    let facts = storage
+        .load_facts_json()
+        .ok()
+        .flatten()
+        .and_then(|json| FactsCache::from_json(&json).ok())
+        .and_then(|c| c.to_facts().ok());
+    Some((facts, hashes))
+}
+
+/// Whole-repo fingerprint from sorted per-file content hashes.
+fn fingerprint_from_hashes(file_hashes: &[(String, String)]) -> String {
+    let mut hasher = Fnv1aHasher::new();
+    for (path, hash) in file_hashes {
+        path.hash(&mut hasher);
+        hash.hash(&mut hasher);
     }
     format!("{:016x}", hasher.finish())
 }
@@ -351,11 +468,13 @@ fn storage_path_str(repository: &Repository) -> String {
     cache_db_path(repository).display().to_string()
 }
 
-/// Persist the knowledge graph to the local cache.
-fn persist_graph(
+/// Persist graph, file hashes, and facts cache.
+fn persist_graph_and_facts(
     repository: &Repository,
     graph: &KnowledgeGraph,
     fingerprint: &str,
+    file_hashes: &[(String, String)],
+    facts: &RepositoryFacts,
 ) -> Result<GraphRevision, Box<dyn std::error::Error>> {
     let db_path = cache_db_path(repository);
 
@@ -376,11 +495,17 @@ fn persist_graph(
         repository_id: repo_id,
         root,
         fingerprint: fingerprint.to_string(),
-        parser_versions: vec!["tree-sitter-rust".into()],
+        parser_versions: vec!["tree-sitter-rust".into(), "tree-sitter-python".into()],
         last_updated: SystemTime::now(),
     };
 
     let revision = storage.persist(graph, &metadata, GraphVersion::CURRENT)?;
+    storage.save_file_hashes(file_hashes)?;
+    if let Ok(json) = FactsCache::from_facts(facts).to_json() {
+        if let Err(e) = storage.save_facts_json(&json) {
+            tracing::warn!(error = %e, "failed to persist facts cache");
+        }
+    }
     Ok(revision)
 }
 

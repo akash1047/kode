@@ -57,6 +57,26 @@ pub trait StorageBackend: Send {
     /// Return the stored content fingerprint for a repository, if any.
     fn repository_fingerprint(&self, repository_id: &str) -> Result<Option<String>, StorageError>;
 
+    /// Replace per-file content hashes for a repository.
+    fn save_file_hashes(
+        &mut self,
+        repository_id: &str,
+        hashes: &[(String, String)],
+    ) -> Result<(), StorageError>;
+
+    /// Load per-file content hashes: (relative_path, content_hash).
+    fn load_file_hashes(&self, repository_id: &str) -> Result<Vec<(String, String)>, StorageError>;
+
+    /// Persist serialized repository facts for incremental merges.
+    fn save_facts_json(
+        &mut self,
+        repository_id: &str,
+        facts_json: &str,
+    ) -> Result<(), StorageError>;
+
+    /// Load serialized repository facts, if present.
+    fn load_facts_json(&self, repository_id: &str) -> Result<Option<String>, StorageError>;
+
     /// Return the schema version detected in the backend.
     fn schema_version(&self) -> Result<SchemaVersion, StorageError>;
 }

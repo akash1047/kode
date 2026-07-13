@@ -19,21 +19,20 @@ kode builds a deterministic understanding of your repository and answers questio
 | Subsystem | Status |
 |-----------|--------|
 | Acquisition (discovery, gitignore, kodeignore) | Implemented |
-| Parsing + fact extraction (Rust / tree-sitter) | Implemented (incl. call sites) |
-| Knowledge graph + validation | Implemented (`Contains`, `Declares`, `Defines`, `Calls`) |
-| Storage (SQLite revisions) | Implemented |
+| Parsing + fact extraction | **Rust** (entities + calls) and **Python** (functions/classes) |
+| Knowledge graph + validation | Implemented (`Contains`, `Declares`, `Defines`, `Calls`, `Imports`) |
+| Storage (SQLite revisions) | Implemented (+ facts cache + file hashes) |
 | Query engine | Implemented (search, call graph, impact, metrics, dead, cycles) |
-| Incremental skip | Whole-repo fingerprint (skip rebuild when unchanged) |
+| Incremental | Whole-repo fingerprint skip + **per-file reparse** when some files change |
 | CLI | Full command surface |
 | MCP | 8 tools |
 | Chat agent TUI | FS tools + symbol/call/metrics tools |
 
 Still open (see [docs/ROADMAP.md](docs/ROADMAP.md)):
 
-- Per-file incremental reparse
-- Multi-language parsers beyond Rust
 - `--watch` and parallel `--threads`
-- Import dependency edges, LSP / IDE / web
+- More languages (TypeScript, Go, …)
+- LSP / IDE / web
 
 Contributors should read `DESIGN.md` and the [documentation index](docs/README.md).
 

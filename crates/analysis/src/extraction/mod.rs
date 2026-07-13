@@ -19,20 +19,24 @@
 //! - Iteration order is deterministic (sorted by [`EntityId`]).
 //! - Extraction continues past recoverable issues (reported as diagnostics).
 
+mod cache;
 mod diagnostic;
 mod error;
 mod extractor;
 mod model;
 mod orchestrator;
+mod python;
 mod registry;
 mod result;
 mod rust;
 
+pub use cache::FactsCache;
 pub use diagnostic::{ExtractionDiagnostic, Severity as ExtractionSeverity};
 pub use error::Error;
 pub use extractor::Extractor;
 pub use model::*;
 pub use orchestrator::ExtractionOrchestrator;
+pub use python::PythonExtractor;
 pub use registry::ExtractorRegistry;
 pub use result::{ExtractionOutcome, SkipReason};
 pub use rust::RustExtractor;

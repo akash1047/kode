@@ -42,9 +42,24 @@ impl ParsingOrchestrator {
         snapshot: &RepositorySnapshot,
         sources: &SourceInventory,
     ) -> SyntaxTreeInventory {
-        let mut outcomes = Vec::with_capacity(snapshot.files().len());
+        self.run_filtered(snapshot, sources, None)
+    }
 
-        for file in snapshot.files() {
+    /// Parse files from the snapshot, optionally restricted to `only` relative paths.
+    pub fn run_filtered(
+        &self,
+        snapshot: &RepositorySnapshot,
+        sources: &SourceInventory,
+        only: Option<&std::collections::HashSet<std::path::PathBuf>>,
+    ) -> SyntaxTreeInventory {
+        let files: Vec<_> = snapshot
+            .files()
+            .iter()
+            .filter(|f| only.map_or(true, |set| set.contains(f.relative_path())))
+            .collect();
+        let mut outcomes = Vec::with_capacity(files.len());
+
+        for file in files {
             let outcome = self.parse_file(file, sources);
             outcomes.push(outcome);
         }
@@ -192,9 +207,28 @@ mod tests {
     #[test]
     fn skips_unsupported_language() {
         let (snapshot, sources, _dir) = create_snapshot_and_sources(vec![(
+            PathBuf::from("main.go"),
+            Some(Language::Go),
+            "package main",
+        )]);
+
+        let orchestrator = ParsingOrchestrator::new(ParserRegistry::default());
+        let inventory = orchestrator.run(&snapshot, &sources);
+
+        assert_eq!(inventory.len(), 1);
+        let outcome = inventory.get(Path::new("main.go")).unwrap();
+        assert!(matches!(
+            outcome.kind(),
+            ParseOutcome::Skipped(SkipReason::UnsupportedLanguage)
+        ));
+    }
+
+    #[test]
+    fn parses_python_files() {
+        let (snapshot, sources, _dir) = create_snapshot_and_sources(vec![(
             PathBuf::from("main.py"),
             Some(Language::Python),
-            "print('hello')",
+            "def hello():\n    pass\n",
         )]);
 
         let orchestrator = ParsingOrchestrator::new(ParserRegistry::default());
@@ -202,10 +236,7 @@ mod tests {
 
         assert_eq!(inventory.len(), 1);
         let outcome = inventory.get(Path::new("main.py")).unwrap();
-        assert!(matches!(
-            outcome.kind(),
-            ParseOutcome::Skipped(SkipReason::UnsupportedLanguage)
-        ));
+        assert!(matches!(outcome.kind(), ParseOutcome::Success(_)));
     }
 
     #[test]
@@ -251,10 +282,7 @@ mod tests {
         let rs = inventory.get(Path::new("main.rs")).unwrap();
         assert!(matches!(rs.kind(), ParseOutcome::Success(_)));
         let py = inventory.get(Path::new("lib.py")).unwrap();
-        assert!(matches!(
-            py.kind(),
-            ParseOutcome::Skipped(SkipReason::UnsupportedLanguage)
-        ));
+        assert!(matches!(py.kind(), ParseOutcome::Success(_)));
         let json = inventory.get(Path::new("data.json")).unwrap();
         assert!(matches!(
             json.kind(),
@@ -332,11 +360,11 @@ mod tests {
     fn parse_file_content_skipped() {
         let registry = ParserRegistry::default();
         let file = RepositoryFile::new(
-            Path::new("test.py"),
+            Path::new("test.go"),
             FileMetadata::new(15, None),
-            Some(Language::Python),
+            Some(Language::Go),
         );
-        let outcome = parse_file_content("print('hi')", &file, &registry);
+        let outcome = parse_file_content("package main", &file, &registry);
         assert!(matches!(outcome.kind(), ParseOutcome::Skipped(_)));
     }
 }

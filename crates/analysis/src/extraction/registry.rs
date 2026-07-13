@@ -52,6 +52,7 @@ impl Default for ExtractorRegistry {
     fn default() -> Self {
         let mut registry = Self::new();
         registry.register(Box::new(crate::extraction::rust::RustExtractor));
+        registry.register(Box::new(crate::extraction::python::PythonExtractor));
         registry
     }
 }

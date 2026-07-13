@@ -102,6 +102,21 @@ impl SqliteBackend {
                 ON relationships(source_id);
             CREATE INDEX IF NOT EXISTS idx_relationships_target
                 ON relationships(target_id);
+
+            CREATE TABLE IF NOT EXISTS file_hashes (
+                repository_id TEXT NOT NULL,
+                path          TEXT NOT NULL,
+                content_hash  TEXT NOT NULL,
+                PRIMARY KEY (repository_id, path),
+                FOREIGN KEY (repository_id) REFERENCES repositories(id)
+            );
+
+            CREATE TABLE IF NOT EXISTS facts_cache (
+                repository_id TEXT PRIMARY KEY,
+                facts_json    TEXT NOT NULL,
+                updated_at    INTEGER NOT NULL,
+                FOREIGN KEY (repository_id) REFERENCES repositories(id)
+            );
             ",
         )?;
         Ok(())
@@ -417,6 +432,14 @@ impl StorageBackend for SqliteBackend {
             params![repository_id],
         )?;
         tx.execute(
+            "DELETE FROM file_hashes WHERE repository_id = ?1",
+            params![repository_id],
+        )?;
+        tx.execute(
+            "DELETE FROM facts_cache WHERE repository_id = ?1",
+            params![repository_id],
+        )?;
+        tx.execute(
             "DELETE FROM repositories WHERE id = ?1",
             params![repository_id],
         )?;
@@ -490,6 +513,76 @@ impl StorageBackend for SqliteBackend {
         match result {
             Ok(fp) if !fp.is_empty() => Ok(Some(fp)),
             Ok(_) => Ok(None),
+            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+            Err(e) => Err(StorageError::from(e)),
+        }
+    }
+
+    fn save_file_hashes(
+        &mut self,
+        repository_id: &str,
+        hashes: &[(String, String)],
+    ) -> Result<(), StorageError> {
+        let mut conn = self.conn();
+        let tx = conn.transaction()?;
+        tx.execute(
+            "DELETE FROM file_hashes WHERE repository_id = ?1",
+            params![repository_id],
+        )?;
+        {
+            let mut stmt = tx.prepare(
+                "INSERT INTO file_hashes (repository_id, path, content_hash) VALUES (?1, ?2, ?3)",
+            )?;
+            for (path, hash) in hashes {
+                stmt.execute(params![repository_id, path, hash])?;
+            }
+        }
+        tx.commit()?;
+        Ok(())
+    }
+
+    fn load_file_hashes(&self, repository_id: &str) -> Result<Vec<(String, String)>, StorageError> {
+        let conn = self.conn();
+        let mut stmt = conn.prepare(
+            "SELECT path, content_hash FROM file_hashes WHERE repository_id = ?1 ORDER BY path",
+        )?;
+        let rows = stmt.query_map(params![repository_id], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+        })?;
+        let mut out = Vec::new();
+        for row in rows {
+            out.push(row?);
+        }
+        Ok(out)
+    }
+
+    fn save_facts_json(
+        &mut self,
+        repository_id: &str,
+        facts_json: &str,
+    ) -> Result<(), StorageError> {
+        let conn = self.conn();
+        conn.execute(
+            "INSERT OR REPLACE INTO facts_cache (repository_id, facts_json, updated_at)
+             VALUES (?1, ?2, ?3)",
+            params![
+                repository_id,
+                facts_json,
+                duration_since_epoch(&SystemTime::now())
+            ],
+        )?;
+        Ok(())
+    }
+
+    fn load_facts_json(&self, repository_id: &str) -> Result<Option<String>, StorageError> {
+        let conn = self.conn();
+        let result = conn.query_row(
+            "SELECT facts_json FROM facts_cache WHERE repository_id = ?1",
+            params![repository_id],
+            |row| row.get::<_, String>(0),
+        );
+        match result {
+            Ok(s) => Ok(Some(s)),
             Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
             Err(e) => Err(StorageError::from(e)),
         }

@@ -133,6 +133,9 @@ pub fn build_relationships(
     // Function → Function (calls) — resolve call sites by callee name.
     relationships.extend(build_call_relationships(facts, node_by_id));
 
+    // Import edges — best-effort resolve `use` path last segment to module/struct/function.
+    relationships.extend(build_import_relationships(facts, node_by_id));
+
     // Sort deterministically
     relationships.sort_by(|a, b| {
         a.source()
@@ -140,6 +143,84 @@ pub fn build_relationships(
             .then_with(|| a.target().cmp(b.target()))
             .then_with(|| a.kind().cmp(&b.kind()))
     });
+
+    relationships
+}
+
+/// Resolve import facts into `Imports` edges by matching the final path segment
+/// to a module / type / function name in the graph.
+fn build_import_relationships(
+    facts: &RepositoryFacts,
+    node_by_id: &BTreeMap<GraphNodeId, usize>,
+) -> Vec<Relationship> {
+    use std::collections::HashMap;
+
+    let mut by_name: HashMap<&str, Vec<GraphNodeId>> = HashMap::new();
+    for f in facts.functions() {
+        by_name
+            .entry(f.name())
+            .or_default()
+            .push(GraphNodeId::Entity(*f.id()));
+    }
+    for m in facts.modules() {
+        by_name
+            .entry(m.name())
+            .or_default()
+            .push(GraphNodeId::Entity(*m.id()));
+    }
+    for s in facts.structs() {
+        by_name
+            .entry(s.name())
+            .or_default()
+            .push(GraphNodeId::Entity(*s.id()));
+    }
+    for t in facts.traits() {
+        by_name
+            .entry(t.name())
+            .or_default()
+            .push(GraphNodeId::Entity(*t.id()));
+    }
+    for e in facts.enums() {
+        by_name
+            .entry(e.name())
+            .or_default()
+            .push(GraphNodeId::Entity(*e.id()));
+    }
+
+    let mut relationships = Vec::new();
+    let mut seen = std::collections::BTreeSet::new();
+
+    for imp in facts.imports() {
+        let source_id = GraphNodeId::Entity(*imp.id());
+        if !node_by_id.contains_key(&source_id) {
+            continue;
+        }
+        let path = imp.path();
+        let segment = path.rsplit("::").next().unwrap_or(path);
+        // Strip trailing `*` for glob imports like `foo::*`.
+        let segment = segment.trim_end_matches('*').trim_end_matches(':');
+        if segment.is_empty() {
+            continue;
+        }
+        let Some(targets) = by_name.get(segment) else {
+            continue;
+        };
+        for target in targets {
+            if !node_by_id.contains_key(target) {
+                continue;
+            }
+            if !seen.insert((source_id, *target)) {
+                continue;
+            }
+            relationships.push(Relationship::with_source(
+                source_id,
+                *target,
+                RelationshipKind::Imports,
+                RelationshipMetadata::new(),
+                imp.evidence().clone(),
+            ));
+        }
+    }
 
     relationships
 }

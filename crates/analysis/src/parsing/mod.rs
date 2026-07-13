@@ -14,6 +14,7 @@
 //! - [`SourceInventory`] — immutable source text storage, loaded before parsing
 //! - [`ParseOutcome`] — four-way discrimination (Success, Recovered, Skipped, Failed)
 
+mod python;
 mod rust;
 pub(crate) mod ts;
 
@@ -30,6 +31,7 @@ pub use diagnostic::{Diagnostic, Severity};
 pub use error::Error;
 pub use orchestrator::ParsingOrchestrator;
 pub use parser::Parser;
+pub use python::PythonParser;
 pub use registry::ParserRegistry;
 pub use result::{ParseOutcome, SkipReason};
 pub use rust::RustParser;

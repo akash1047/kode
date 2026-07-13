@@ -54,6 +54,7 @@ impl Default for ParserRegistry {
     fn default() -> Self {
         let mut registry = Self::new();
         registry.register(Box::new(crate::parsing::rust::RustParser));
+        registry.register(Box::new(crate::parsing::python::PythonParser));
         registry
     }
 }

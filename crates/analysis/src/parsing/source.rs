@@ -35,10 +35,23 @@ impl SourceInventory {
     /// Returns the first I/O error encountered. Partial loads are not
     /// supported; if any file cannot be read, the entire operation fails.
     pub fn from_snapshot(snapshot: &RepositorySnapshot) -> Result<Self, std::io::Error> {
+        Self::from_snapshot_paths(snapshot, None)
+    }
+
+    /// Load source files, optionally restricted to `only` relative paths.
+    pub fn from_snapshot_paths(
+        snapshot: &RepositorySnapshot,
+        only: Option<&std::collections::HashSet<PathBuf>>,
+    ) -> Result<Self, std::io::Error> {
         let root = snapshot.repository().root();
         let mut sources = HashMap::with_capacity(snapshot.files().len());
 
         for file in snapshot.files() {
+            if let Some(filter) = only {
+                if !filter.contains(file.relative_path()) {
+                    continue;
+                }
+            }
             let full_path = root.join(file.relative_path());
             let content = std::fs::read_to_string(&full_path)?;
             sources.insert(

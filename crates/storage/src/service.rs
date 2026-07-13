@@ -80,6 +80,27 @@ impl RepositoryStorage {
         self.backend.repository_fingerprint(&self.repository_id)
     }
 
+    /// Replace per-file content hashes.
+    pub fn save_file_hashes(&mut self, hashes: &[(String, String)]) -> Result<(), StorageError> {
+        self.backend.save_file_hashes(&self.repository_id, hashes)
+    }
+
+    /// Load per-file content hashes.
+    pub fn load_file_hashes(&self) -> Result<Vec<(String, String)>, StorageError> {
+        self.backend.load_file_hashes(&self.repository_id)
+    }
+
+    /// Persist facts JSON for incremental merges.
+    pub fn save_facts_json(&mut self, facts_json: &str) -> Result<(), StorageError> {
+        self.backend
+            .save_facts_json(&self.repository_id, facts_json)
+    }
+
+    /// Load facts JSON if present.
+    pub fn load_facts_json(&self) -> Result<Option<String>, StorageError> {
+        self.backend.load_facts_json(&self.repository_id)
+    }
+
     /// Remove all cached data for this repository.
     pub fn clear(&mut self) -> Result<(), StorageError> {
         self.backend.remove_repository(&self.repository_id)

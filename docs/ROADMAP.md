@@ -53,21 +53,22 @@ This document describes the evolution of **kode** organized by milestone rather 
 | | |
 |---|---|
 | Status | ✓ Complete (product scope) |
-| Delivered | Rust call-site extraction, `Calls` edges, find_callers / find_callees / impact_analysis, architecture metrics (fan-in/out, instability), dead-code heuristic, call-graph cycles, intent router, stronger evidence verification, whole-repo fingerprint incremental skip |
+| Delivered | Rust call-site extraction, `Calls` edges, find_callers / find_callees / impact_analysis, architecture metrics (fan-in/out, instability), dead-code heuristic, call-graph cycles, intent router, stronger evidence verification, whole-repo fingerprint skip, **per-file incremental reparse** (facts cache + content hashes), **`Imports` edges**, **Python** parse/extract MVP |
 
-Remaining beyond M6 product scope:
+Remaining beyond M6:
 
-- Per-file incremental reparse (only reprocess changed files; merge facts)
-- Multi-language parsers beyond Rust
 - `--watch` / parallel `--threads`
+- Deeper multi-language support (TS/Go/…)
+- Stronger import resolution (cargo metadata)
 
 ---
 
 ## Near Term
 
-- Per-file incremental indexing — reparse only changed files and merge facts
-- Multi-language extractors — Python / TypeScript (registry already extensible)
-- Dependency analysis — `Imports` / `DependsOn` edges from `use` paths
+- ~~Per-file incremental indexing~~ (done)
+- ~~Python extractor MVP~~ (done)
+- ~~Import edges from `use` paths~~ (done, name-based)
+- Stronger multi-language (TypeScript, Go, …)
 - `--watch` and parallel scan workers
 - Multi-repository indexing
 - LSP integration
