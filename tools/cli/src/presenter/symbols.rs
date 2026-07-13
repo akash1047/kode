@@ -35,6 +35,7 @@ mod tests {
             end_line: 20,
             end_column: 0,
             verified,
+            language: Some("Rust".into()),
         }
     }
 

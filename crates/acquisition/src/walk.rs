@@ -33,7 +33,13 @@ pub(crate) fn walk_repository(
     let mut files = Vec::new();
     let mut directories = Vec::new();
 
-    let walker = WalkBuilder::new(root).standard_filters(true).build();
+    // `.kodeignore` has higher precedence than `.gitignore` (ignore crate custom
+    // ignore filenames). When both exist, kodeignore rules win on conflicts.
+    // See docs/011-kodeignore.txt.
+    let walker = WalkBuilder::new(root)
+        .standard_filters(true)
+        .add_custom_ignore_filename(".kodeignore")
+        .build();
 
     for result in walker {
         let entry = result.map_err(|e| {

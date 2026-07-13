@@ -48,6 +48,15 @@ This document describes the evolution of **kode** organized by milestone rather 
 
 ---
 
+### Milestone 5b — Interfaces & Chat (complete)
+
+| | |
+|---|---|
+| Status | ✓ Complete |
+| Delivered | MCP server, query/symbols CLI, agent TUI chat (tools + symbol index), graph export (DOT/GraphML), cache-backed status/files, `.kodeignore` |
+
+---
+
 ## Current Milestone
 
 ### Milestone 6 — Advanced Analysis
@@ -55,14 +64,15 @@ This document describes the evolution of **kode** organized by milestone rather 
 | | |
 |---|---|
 | Status | 🔄 In Progress |
-| Target | Cache improvements, MCP server, deeper graph algorithms |
+| Delivered so far | Rust call-site extraction, `Calls` graph edges, `find_callers` / `find_callees` / `impact_analysis` (query + agent tools + CLI prefixes) |
+| Remaining | Architecture metrics, incremental indexing, multi-language call extraction |
 
 Planned deliverables:
 
-- Cache improvements — richer relationships in the incremental cache
-- MCP server — expose query engine through the Model Context Protocol
-- Architecture visualization — render the Knowledge Graph as interactive diagrams
-- Impact analysis — determine what entities are affected by a given change
+- ~~Call graph — extract `Calls` relationships from Rust AST~~ (done for free-function / method name resolution)
+- ~~Impact analysis — reverse call BFS~~ (done; depth-bounded)
+- Architecture metrics — fan-in, fan-out, cohesion
+- Incremental indexing — only reprocess changed files
 
 ## Near Term
 

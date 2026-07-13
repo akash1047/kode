@@ -1,5 +1,6 @@
 use kode_acquisition::Language;
 use kode_app::ScanResult;
+use kode_query::FileResult;
 
 pub struct FilesView {
     pub entries: Vec<(String, String)>,
@@ -21,6 +22,20 @@ impl FilesView {
             .map(|f| {
                 let lang = f.language().map(|l| l.to_string()).unwrap_or_default();
                 (lang, f.relative_path().display().to_string())
+            })
+            .collect();
+        Self { entries }
+    }
+
+    /// Build a files view from knowledge-graph file nodes.
+    pub fn from_file_results(files: &[FileResult]) -> Self {
+        let entries = files
+            .iter()
+            .map(|f| {
+                (
+                    f.language.clone().unwrap_or_default(),
+                    f.path.display().to_string(),
+                )
             })
             .collect();
         Self { entries }

@@ -111,6 +111,8 @@ pub struct ChatConfig {
     pub api_key_value: Option<String>,
     pub api_base: Option<String>,
 
+    /// Theme name (dark/light/auto); reserved for future TUI theming.
+    #[allow(dead_code)]
     pub theme: String,
 }
 
@@ -165,7 +167,7 @@ impl ChatConfig {
             "cohere" => "CO_API_KEY",
             "groq" => "GROQ_API_KEY",
             "deepseek" => "DEEPSEEK_API_KEY",
-            "ollama" => return None,
+            "ollama" => "OLLAMA_API_KEY",
             _ => "OPENAI_API_KEY",
         };
         std::env::var(env_var).ok()

@@ -26,14 +26,18 @@ The **Acquisition**, **Parsing**, **Fact Extraction**, **Knowledge Graph**, and 
 
 **Storage** persists graph revisions with transactional guarantees, content-addressed caching, and a backend abstraction supporting multiple implementations.
 
-The CLI supports `scan`, `status`, and `files` subcommands wired to the repository scanning pipeline. The `symbols`, `query`, `chat`, `cache`, `config`, and `mcp` subcommands currently return placeholder messages.
+The CLI supports the full command surface: `scan`, `status`, `files`, `symbols`,
+`query`, `chat`, `cache`, `config`, and `mcp`.
 
-The following capabilities are **planned** and not yet implemented:
+**Chat** (`kode chat`) is a fullscreen agent TUI with sandboxed tools
+(`list_dir`, `grep`, `read_file`) and knowledge-graph symbol tools when an
+index exists. One-shot: `kode chat -m "…"`.
 
-- Query execution
-- Graph analysis (graph algorithms)
-- MCP server logic
-- LLM integration
+Still planned / incomplete:
+
+- Graph analysis algorithms (impact, metrics, call extraction)
+- Multi-language parsers beyond Rust
+- Incremental indexing and `--watch`
 
 Contributors should read `DESIGN.md`, [ACQUISITION.md](docs/ACQUISITION.md), [ANALYSIS.md](docs/ANALYSIS.md), [KNOWLEDGE_GRAPH.md](docs/KNOWLEDGE_GRAPH.md), [STORAGE.md](docs/STORAGE.md), and the [documentation index](docs/README.md) before starting work.
 

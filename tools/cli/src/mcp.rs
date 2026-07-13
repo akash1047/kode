@@ -492,6 +492,7 @@ mod tests {
             end_line: 20,
             end_column: 5,
             verified: true,
+            language: Some("Rust".into()),
         };
         let json = format_symbol(&sym);
         assert_eq!(json["name"], "foo");
@@ -511,6 +512,7 @@ mod tests {
             end_line: 5,
             end_column: 0,
             verified: false,
+            language: None,
         };
         let json = format_symbol(&sym);
         assert!(!json["verified"].as_bool().unwrap());

@@ -11,9 +11,6 @@ pub enum AgentError {
     #[error("Max turns ({0}) exceeded")]
     MaxTurns(usize),
 
-    #[error("Query engine error: {0}")]
-    Query(#[from] kode_query::QueryError),
-
     #[error("Request timed out after {0}s")]
     Timeout(u64),
 

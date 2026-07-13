@@ -5,9 +5,9 @@ use std::path::{Path, PathBuf};
 
 use kode_acquisition::Language;
 use kode_analysis::extraction::{
-    ConstantFact, Entity, EntityId, EnumFact, Evidence, ExportFact, FunctionFact, ImplBlockFact,
-    ImportFact, ModuleFact, RepositoryFacts, StaticFact, StructFact, TraitFact, TypeAliasFact,
-    Visibility,
+    CallSite, ConstantFact, Entity, EntityId, EnumFact, Evidence, ExportFact, FunctionFact,
+    ImplBlockFact, ImportFact, ModuleFact, RepositoryFacts, StaticFact, StructFact, TraitFact,
+    TypeAliasFact, Visibility,
 };
 use kode_graph::{
     GraphBuilder, GraphEvidence, GraphNodeId, Node, NodeKind, RelationshipKind, RepositoryContext,
@@ -1268,4 +1268,72 @@ fn structural_evidence_description_is_derived() {
         path: std::path::PathBuf::from("src/main.rs"),
     };
     assert_eq!(sev.description(), "file: src/main.rs");
+}
+
+#[test]
+fn call_sites_become_calls_relationships() {
+    let caller_ev = evidence("src/lib.rs", 0);
+    let callee_ev = evidence("src/lib.rs", 100);
+    let call_ev = Evidence::new(
+        PathBuf::from("src/lib.rs"),
+        "call_expression",
+        50..60,
+        5,
+        1,
+        5,
+        10,
+        Language::Rust,
+    );
+
+    let callee = FunctionFact::new(
+        entity_id("src/lib.rs", "function", "helper", 100),
+        "helper",
+        Visibility::Private,
+        None,
+        Vec::new(),
+        false,
+        false,
+        false,
+        None,
+        None,
+        None,
+        callee_ev,
+    );
+
+    let caller = FunctionFact::new(
+        entity_id("src/lib.rs", "function", "main_fn", 0),
+        "main_fn",
+        Visibility::Public,
+        None,
+        Vec::new(),
+        false,
+        false,
+        false,
+        None,
+        None,
+        None,
+        caller_ev,
+    )
+    .with_calls(vec![CallSite::new("helper", None, false, call_ev)]);
+
+    let facts = build_facts(vec![Entity::Function(caller), Entity::Function(callee)]);
+    let ctx = RepositoryContext::from_facts(&facts);
+    let graph = GraphBuilder::build(&facts, &ctx).unwrap();
+
+    let caller_id = graph_entity_id("src/lib.rs", "function", "main_fn", 0);
+    let callee_id = graph_entity_id("src/lib.rs", "function", "helper", 100);
+
+    let calls: Vec<_> = graph
+        .outgoing(&caller_id)
+        .filter(|r| r.kind() == RelationshipKind::Calls)
+        .collect();
+    assert_eq!(calls.len(), 1, "expected one Calls edge");
+    assert_eq!(calls[0].target(), &callee_id);
+
+    let callers: Vec<_> = graph
+        .incoming(&callee_id)
+        .filter(|r| r.kind() == RelationshipKind::Calls)
+        .collect();
+    assert_eq!(callers.len(), 1);
+    assert_eq!(callers[0].source(), &caller_id);
 }

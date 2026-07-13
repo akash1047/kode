@@ -4,17 +4,28 @@ use super::style;
 
 pub fn format(view: &StatusView) -> String {
     let mut out = style::header("status");
+    let rev = view
+        .revision
+        .map(|r| format!("rev {r}"))
+        .unwrap_or_else(|| "no revision".into());
     out.push_str(&format!(
-        "  ● {} — {} — {}\n  ● {} files · {} parsed · {} recovered · {} skipped · {} failed\n",
+        "  ● {} — {} — {}\n  ● {} files · {} entities · {} nodes · {} edges · {}\n  ● source: {}\n",
         view.repository_root,
         view.workspace,
         view.languages,
         view.files,
         view.parsed,
-        view.recovered,
-        view.skipped,
-        view.failed,
+        view.graph_nodes,
+        view.graph_relationships,
+        rev,
+        view.source,
     ));
+    if view.source == "scan" {
+        out.push_str(&format!(
+            "  ● parse: {} recovered · {} skipped · {} failed\n",
+            view.recovered, view.skipped, view.failed,
+        ));
+    }
     out
 }
 
@@ -33,6 +44,10 @@ mod tests {
             recovered: 3,
             skipped: 5,
             failed: 2,
+            source: "scan".into(),
+            graph_nodes: 100,
+            graph_relationships: 40,
+            revision: Some(1),
         }
     }
 
@@ -40,10 +55,8 @@ mod tests {
     fn test_status_format_contains_values() {
         let out = format(&view());
         assert!(out.contains("50 files"));
-        assert!(out.contains("40 parsed"));
-        assert!(out.contains("3 recovered"));
-        assert!(out.contains("5 skipped"));
-        assert!(out.contains("2 failed"));
+        assert!(out.contains("40 entities"));
+        assert!(out.contains("source: scan"));
     }
 
     #[test]

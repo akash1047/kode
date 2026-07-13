@@ -23,7 +23,10 @@ use tempfile as _;
 use std::path::PathBuf;
 use std::sync::Mutex;
 
-use kode_graph::{GraphEvidence, KnowledgeGraph, Node, NodeKind, StructuralEvidence};
+use kode_graph::{
+    GraphEvidence, GraphNodeId, KnowledgeGraph, Node, NodeKind, RelationshipKind,
+    StructuralEvidence,
+};
 use kode_storage::RepositoryStorage;
 use thiserror::Error;
 
@@ -53,6 +56,8 @@ pub struct SymbolResult {
     pub end_line: usize,
     pub end_column: usize,
     pub verified: bool,
+    /// Programming language from source evidence, when available.
+    pub language: Option<String>,
 }
 
 impl SymbolResult {
@@ -60,6 +65,7 @@ impl SymbolResult {
         let (file_path, start_line, start_column, end_line, end_column) =
             evidence_location(node.evidence());
         let verified = evidence_verified(node.evidence());
+        let language = evidence_language(node.evidence());
         Self {
             name: node.name().to_string(),
             kind: node.kind(),
@@ -69,8 +75,24 @@ impl SymbolResult {
             end_line,
             end_column,
             verified,
+            language,
         }
     }
+}
+
+/// A file known to the knowledge graph.
+pub struct FileResult {
+    pub path: PathBuf,
+    pub language: Option<String>,
+}
+
+/// Aggregate stats for a loaded graph revision.
+pub struct GraphStats {
+    pub node_count: usize,
+    pub relationship_count: usize,
+    pub file_count: usize,
+    pub entity_count: usize,
+    pub languages: Vec<String>,
 }
 
 fn evidence_location(evidence: &GraphEvidence) -> (PathBuf, usize, usize, usize, usize) {
@@ -93,6 +115,46 @@ fn evidence_verified(evidence: &GraphEvidence) -> bool {
         GraphEvidence::Structural(StructuralEvidence::File { path }) => path.exists(),
         _ => false,
     }
+}
+
+fn evidence_language(evidence: &GraphEvidence) -> Option<String> {
+    match evidence {
+        GraphEvidence::Source(ev) => Some(ev.language().to_string()),
+        _ => None,
+    }
+}
+
+fn language_matches(lang: Option<&str>, filter: Option<&str>) -> bool {
+    match filter {
+        None => true,
+        Some(f) => lang
+            .map(|l| l.eq_ignore_ascii_case(f) || l.to_lowercase().starts_with(&f.to_lowercase()))
+            .unwrap_or(false),
+    }
+}
+
+fn language_from_path(path: &std::path::Path) -> Option<String> {
+    let ext = path.extension()?.to_str()?.to_ascii_lowercase();
+    let name = match ext.as_str() {
+        "rs" => "Rust",
+        "py" => "Python",
+        "md" | "markdown" => "Markdown",
+        "toml" => "TOML",
+        "json" => "JSON",
+        "yaml" | "yml" => "YAML",
+        "js" | "mjs" | "cjs" => "JavaScript",
+        "ts" | "tsx" => "TypeScript",
+        "go" => "Go",
+        "java" => "Java",
+        "rb" => "Ruby",
+        "sh" | "bash" => "Shell",
+        "css" => "CSS",
+        "html" | "htm" => "HTML",
+        "sql" => "SQL",
+        "proto" => "Protobuf",
+        _ => return None,
+    };
+    Some(name.to_string())
 }
 
 /// Query engine wrapping a repository's persisted knowledge graph.
@@ -125,21 +187,35 @@ impl QueryEngine {
     /// Search symbols by name (exact match and prefix match).
     ///
     /// If `kind` is provided, results are filtered to that node kind.
+    /// If `language` is provided, results are filtered by evidence language
+    /// (case-insensitive).
     pub fn search_symbols(
         &self,
         query: &str,
         kind: Option<NodeKind>,
+    ) -> Result<Vec<SymbolResult>, QueryError> {
+        self.search_symbols_filtered(query, kind, None)
+    }
+
+    /// Search symbols with optional kind and language filters.
+    pub fn search_symbols_filtered(
+        &self,
+        query: &str,
+        kind: Option<NodeKind>,
+        language: Option<&str>,
     ) -> Result<Vec<SymbolResult>, QueryError> {
         let graph = self.load_graph()?;
         Ok(graph
             .nodes()
             .iter()
             .filter(|node| {
+                // Skip pure structural roots unless the query is empty listing.
                 let name_match = node.name() == query || node.name().starts_with(query);
                 let kind_match = kind.map_or(true, |k| node.kind() == k);
                 name_match && kind_match
             })
             .map(SymbolResult::from_node)
+            .filter(|s| language_matches(s.language.as_deref(), language))
             .collect())
     }
 
@@ -160,6 +236,185 @@ impl QueryEngine {
             .nodes_by_kind(kind)
             .map(SymbolResult::from_node)
             .collect())
+    }
+
+    /// List file nodes from the knowledge graph, optionally filtered by language.
+    pub fn list_files(&self, language: Option<&str>) -> Result<Vec<FileResult>, QueryError> {
+        let graph = self.load_graph()?;
+        let mut files: Vec<FileResult> = graph
+            .nodes_by_kind(NodeKind::File)
+            .map(|node| {
+                let path = match node.evidence() {
+                    GraphEvidence::Structural(StructuralEvidence::File { path }) => path.clone(),
+                    _ => PathBuf::from(node.name()),
+                };
+                let language = language_from_path(&path);
+                FileResult { path, language }
+            })
+            .filter(|f| language_matches(f.language.as_deref(), language))
+            .collect();
+        files.sort_by(|a, b| a.path.cmp(&b.path));
+        Ok(files)
+    }
+
+    /// Aggregate statistics for the loaded graph.
+    pub fn graph_stats(&self) -> Result<GraphStats, QueryError> {
+        let graph = self.load_graph()?;
+        let mut langs = std::collections::BTreeSet::new();
+        let mut entity_count = 0usize;
+        let mut file_count = 0usize;
+        for node in graph.nodes() {
+            match node.kind() {
+                NodeKind::File => file_count += 1,
+                NodeKind::Repository | NodeKind::Workspace => {}
+                _ => {
+                    entity_count += 1;
+                    if let Some(lang) = evidence_language(node.evidence()) {
+                        langs.insert(lang);
+                    }
+                }
+            }
+        }
+        Ok(GraphStats {
+            node_count: graph.node_count(),
+            relationship_count: graph.relationship_count(),
+            file_count,
+            entity_count,
+            languages: langs.into_iter().collect(),
+        })
+    }
+
+    /// Export the loaded graph as DOT.
+    pub fn export_dot(&self) -> Result<String, QueryError> {
+        let graph = self.load_graph()?;
+        Ok(kode_graph::graph_to_dot(&graph))
+    }
+
+    /// Export the loaded graph as GraphML.
+    pub fn export_graphml(&self) -> Result<String, QueryError> {
+        let graph = self.load_graph()?;
+        Ok(kode_graph::graph_to_graphml(&graph))
+    }
+
+    /// Find functions that **call** `name` (incoming `Calls` edges).
+    pub fn find_callers(&self, name: &str) -> Result<Vec<SymbolResult>, QueryError> {
+        let graph = self.load_graph()?;
+        let targets = graph
+            .nodes()
+            .iter()
+            .filter(|n| n.name() == name && n.kind() == NodeKind::Function)
+            .map(|n| *n.id())
+            .collect::<Vec<_>>();
+
+        let mut callers = Vec::new();
+        let mut seen = std::collections::BTreeSet::new();
+        for target in &targets {
+            for rel in graph.incoming(target) {
+                if rel.kind() != RelationshipKind::Calls {
+                    continue;
+                }
+                if !seen.insert(*rel.source()) {
+                    continue;
+                }
+                if let Some(node) = graph.node_by_id(rel.source()) {
+                    callers.push(SymbolResult::from_node(node));
+                }
+            }
+        }
+        callers.sort_by(|a, b| {
+            a.name
+                .cmp(&b.name)
+                .then_with(|| a.file_path.cmp(&b.file_path))
+        });
+        Ok(callers)
+    }
+
+    /// Find functions that `name` **calls** (outgoing `Calls` edges).
+    pub fn find_callees(&self, name: &str) -> Result<Vec<SymbolResult>, QueryError> {
+        let graph = self.load_graph()?;
+        let sources = graph
+            .nodes()
+            .iter()
+            .filter(|n| n.name() == name && n.kind() == NodeKind::Function)
+            .map(|n| *n.id())
+            .collect::<Vec<_>>();
+
+        let mut callees = Vec::new();
+        let mut seen = std::collections::BTreeSet::new();
+        for source in &sources {
+            for rel in graph.outgoing(source) {
+                if rel.kind() != RelationshipKind::Calls {
+                    continue;
+                }
+                if !seen.insert(*rel.target()) {
+                    continue;
+                }
+                if let Some(node) = graph.node_by_id(rel.target()) {
+                    callees.push(SymbolResult::from_node(node));
+                }
+            }
+        }
+        callees.sort_by(|a, b| {
+            a.name
+                .cmp(&b.name)
+                .then_with(|| a.file_path.cmp(&b.file_path))
+        });
+        Ok(callees)
+    }
+
+    /// Impact set: symbols that (transitively) call `name` via `Calls` edges.
+    ///
+    /// Useful for "what breaks if I change this function?" — BFS over reverse
+    /// call edges, bounded by `max_depth` (None = unlimited within graph size).
+    pub fn impact_analysis(
+        &self,
+        name: &str,
+        max_depth: Option<usize>,
+    ) -> Result<Vec<SymbolResult>, QueryError> {
+        let graph = self.load_graph()?;
+        let seeds: Vec<GraphNodeId> = graph
+            .nodes()
+            .iter()
+            .filter(|n| n.name() == name && n.kind() == NodeKind::Function)
+            .map(|n| *n.id())
+            .collect();
+
+        if seeds.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        let mut impacted = std::collections::BTreeSet::new();
+        let mut queue: std::collections::VecDeque<(GraphNodeId, usize)> =
+            seeds.into_iter().map(|id| (id, 0)).collect();
+        let mut visited = std::collections::BTreeSet::new();
+
+        while let Some((id, depth)) = queue.pop_front() {
+            if !visited.insert(id) {
+                continue;
+            }
+            if depth > 0 {
+                impacted.insert(id);
+            }
+            if max_depth.is_some_and(|m| depth >= m) {
+                continue;
+            }
+            for rel in graph.incoming(&id) {
+                if rel.kind() == RelationshipKind::Calls {
+                    queue.push_back((*rel.source(), depth + 1));
+                }
+            }
+        }
+
+        let mut results: Vec<SymbolResult> = impacted
+            .iter()
+            .filter_map(|id| graph.node_by_id(id).map(SymbolResult::from_node))
+            .collect();
+        results.sort_by(|a, b| {
+            a.name
+                .cmp(&b.name)
+                .then_with(|| a.file_path.cmp(&b.file_path))
+        });
+        Ok(results)
     }
 }
 
@@ -506,5 +761,53 @@ mod tests {
         let engine = setup_engine();
         // Ensure load works
         assert!(engine.load_graph().is_ok());
+    }
+
+    #[test]
+    fn search_symbols_language_filter() {
+        let engine = setup_engine();
+        let rust = engine
+            .search_symbols_filtered("hello", None, Some("Rust"))
+            .unwrap();
+        assert_eq!(rust.len(), 1);
+        let python = engine
+            .search_symbols_filtered("hello", None, Some("Python"))
+            .unwrap();
+        assert!(python.is_empty());
+    }
+
+    #[test]
+    fn list_files_returns_file_nodes() {
+        let engine = setup_engine();
+        let files = engine.list_files(None).unwrap();
+        assert_eq!(files.len(), 1);
+        assert!(files[0].path.ends_with("src/lib.rs"));
+        assert_eq!(files[0].language.as_deref(), Some("Rust"));
+    }
+
+    #[test]
+    fn graph_stats_counts() {
+        let engine = setup_engine();
+        let stats = engine.graph_stats().unwrap();
+        assert_eq!(stats.node_count, 5);
+        assert_eq!(stats.file_count, 1);
+        assert_eq!(stats.entity_count, 2);
+        assert!(stats.languages.iter().any(|l| l == "Rust"));
+    }
+
+    #[test]
+    fn export_dot_contains_digraph() {
+        let engine = setup_engine();
+        let dot = engine.export_dot().unwrap();
+        assert!(dot.contains("digraph"));
+    }
+
+    #[test]
+    fn find_callers_and_callees_empty_without_calls() {
+        // Fixture graph has no Calls edges.
+        let engine = setup_engine();
+        assert!(engine.find_callers("hello").unwrap().is_empty());
+        assert!(engine.find_callees("hello").unwrap().is_empty());
+        assert!(engine.impact_analysis("hello", Some(3)).unwrap().is_empty());
     }
 }

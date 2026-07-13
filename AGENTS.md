@@ -24,7 +24,8 @@ crates/
   analysis/       # stage 2-3: tree-sitter parse + fact extraction. knows Rust only.
   graph/          # stage 4: knowledge graph builder + validator. deterministic.
   storage/        # stage 5: SQLite (bundled) persistence. rusqlite + serde_json.
-  query/          # placeholder. no code.
+  query/          # symbol search + evidence checks
+  agent/          # LLM agent + sandboxed tools (list/grep/read/symbols)
 services/app/     # pipeline orchestrator: run_scan() -> ScanResult
 tools/cli/        # binary. clap 4 derive. subcommands: scan, status, files, symbols, query, chat, cache, config, mcp
 ```
@@ -69,7 +70,8 @@ Comment hierarchy: `//!` module docs (required), `///` public API docs (required
 ## Gotchas
 
 - `Cargo.lock` is in `.gitignore` (library convention). Not committed.
-- `status` subcommand re-scans instead of reading cache.
+- `status` / `files` prefer the graph cache; they re-scan only when no index exists.
+- `scan --full` clears `.kode/cache.db` before rebuilding; `--watch` is not implemented (exits 2).
 - `scripts/` and `examples/` exist but are empty (`.gitkeep`).
 - Only `tree-sitter-rust` grammar bundled. Other languages: Error.
 - `SyntaxBackend` (tree-sitter wrapper) is `pub(crate)`.

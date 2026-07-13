@@ -175,6 +175,57 @@ fn gitignore_respected() {
 }
 
 #[test]
+fn kodeignore_excludes_patterns() {
+    let dir = tempfile::TempDir::new().unwrap();
+    let root = dir.path();
+
+    fs::write(root.join(".kodeignore"), "hidden.txt\n").unwrap();
+    fs::write(root.join("visible.txt"), "ok\n").unwrap();
+    fs::write(root.join("hidden.txt"), "nope\n").unwrap();
+    fs::create_dir_all(root.join(".git")).unwrap();
+
+    let repo = Repository::new(root).unwrap();
+    let snapshot = discover(&repo).unwrap();
+    let file_names: BTreeSet<_> = snapshot
+        .files()
+        .iter()
+        .map(|f| f.relative_path().to_path_buf())
+        .collect();
+
+    assert!(file_names.contains(Path::new("visible.txt")));
+    assert!(
+        !file_names.contains(Path::new("hidden.txt")),
+        "hidden.txt should be excluded by .kodeignore, got: {file_names:?}"
+    );
+}
+
+#[test]
+fn kodeignore_overrides_gitignore_conflict() {
+    // When both exist, custom ignore (.kodeignore) has higher precedence.
+    // .gitignore ignores keepme.txt; .kodeignore uses !keepme.txt to re-include it.
+    let dir = tempfile::TempDir::new().unwrap();
+    let root = dir.path();
+
+    fs::write(root.join(".gitignore"), "keepme.txt\n").unwrap();
+    fs::write(root.join(".kodeignore"), "!keepme.txt\n").unwrap();
+    fs::write(root.join("keepme.txt"), "kept\n").unwrap();
+    fs::create_dir_all(root.join(".git")).unwrap();
+
+    let repo = Repository::new(root).unwrap();
+    let snapshot = discover(&repo).unwrap();
+    let file_names: BTreeSet<_> = snapshot
+        .files()
+        .iter()
+        .map(|f| f.relative_path().to_path_buf())
+        .collect();
+
+    assert!(
+        file_names.contains(Path::new("keepme.txt")),
+        "kodeignore negation should win over gitignore exclude, got: {file_names:?}"
+    );
+}
+
+#[test]
 fn nested_directories() {
     let dir = tempfile::TempDir::new().unwrap();
     let root = dir.path();

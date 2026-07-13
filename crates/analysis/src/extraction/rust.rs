@@ -439,6 +439,8 @@ fn extract_function(
     let evidence = evidence_for_node(node, source, file_path, language);
     let id = EntityId::from_location(language, "function", file_path, name, node.start_byte());
 
+    let calls = extract_calls_in_function(node, source, file_path, language);
+
     Ok(FunctionFact::new(
         id,
         name,
@@ -452,7 +454,106 @@ fn extract_function(
         containing_trait,
         containing_impl,
         evidence,
-    ))
+    )
+    .with_calls(calls))
+}
+
+// ---------------------------------------------------------------------------
+// Call expression extraction
+// ---------------------------------------------------------------------------
+
+/// Walk a function body's AST and collect call sites.
+fn extract_calls_in_function(
+    function_node: tree_sitter::Node,
+    source: &str,
+    file_path: &Path,
+    language: &Language,
+) -> Vec<CallSite> {
+    let Some(body) = function_node.child_by_field_name("body") else {
+        return Vec::new();
+    };
+
+    let mut calls = Vec::new();
+    let mut stack = vec![body];
+    while let Some(node) = stack.pop() {
+        if node.kind() == "call_expression" {
+            if let Some(site) = call_site_from_expression(node, source, file_path, language) {
+                calls.push(site);
+            }
+        }
+        // Nested functions/closures: still collect calls (attributed to outer
+        // function for MVP — good enough for call graph exploration).
+        let mut cursor = node.walk();
+        for child in node.children(&mut cursor) {
+            stack.push(child);
+        }
+    }
+    // Deterministic order by source byte range.
+    calls.sort_by(|a, b| {
+        a.evidence()
+            .byte_range()
+            .start
+            .cmp(&b.evidence().byte_range().start)
+            .then_with(|| a.callee_name().cmp(b.callee_name()))
+    });
+    calls
+}
+
+fn call_site_from_expression(
+    node: tree_sitter::Node,
+    source: &str,
+    file_path: &Path,
+    language: &Language,
+) -> Option<CallSite> {
+    let func = node.child_by_field_name("function")?;
+    let (name, path, is_method) = resolve_callee(func, source)?;
+    if name.is_empty() {
+        return None;
+    }
+    let evidence =
+        evidence_for_node_with_kind(node, source, file_path, language, "call_expression");
+    Some(CallSite::new(name, path, is_method, evidence))
+}
+
+/// Resolve the callee of a call_expression's `function` child.
+fn resolve_callee(node: tree_sitter::Node, source: &str) -> Option<(String, Option<String>, bool)> {
+    match node.kind() {
+        "identifier" => {
+            let name = node_text(node, source).to_string();
+            Some((name, None, false))
+        }
+        "scoped_identifier" => {
+            let full = node_text(node, source).to_string();
+            let name = full.rsplit("::").next().unwrap_or(&full).to_string();
+            Some((name, Some(full), false))
+        }
+        "field_expression" => {
+            // receiver.method — field name is the method.
+            let field = node.child_by_field_name("field")?;
+            let name = node_text(field, source).to_string();
+            let full = node_text(node, source).to_string();
+            Some((name, Some(full), true))
+        }
+        "generic_function" => {
+            // foo::<T> — recurse into function child.
+            let inner = node.child_by_field_name("function")?;
+            resolve_callee(inner, source)
+        }
+        _ => {
+            // Fallback: last identifier-like token in the text.
+            let text = node_text(node, source);
+            let name = text
+                .rsplit(|c: char| !c.is_alphanumeric() && c != '_')
+                .find(|s| !s.is_empty())
+                .unwrap_or("")
+                .to_string();
+            if name.is_empty() {
+                None
+            } else {
+                Some((name, Some(text.to_string()), false))
+            }
+        }
+    }
 }
 
 fn extract_trait(
@@ -1185,6 +1286,47 @@ mod tests {
                 assert_eq!(f.name(), "identity");
             }
             other => panic!("expected Success, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn extract_call_sites_in_function_body() {
+        let tree = parse_rust(
+            r#"
+            fn helper() {}
+            fn caller() {
+                helper();
+                crate::helper();
+                x.method();
+            }
+            "#,
+        );
+        let extractor = RustExtractor;
+        let outcome = extractor.extract(&tree);
+        match outcome {
+            ExtractionOutcome::Success(entities) => {
+                let caller = entities
+                    .iter()
+                    .find_map(|e| match e {
+                        Entity::Function(f) if f.name() == "caller" => Some(f),
+                        _ => None,
+                    })
+                    .expect("caller function");
+                let names: Vec<&str> = caller.calls().iter().map(|c| c.callee_name()).collect();
+                assert!(
+                    names.contains(&"helper"),
+                    "expected helper call, got {names:?}"
+                );
+                assert!(
+                    names.contains(&"method"),
+                    "expected method call, got {names:?}"
+                );
+                assert!(
+                    caller.calls().iter().any(|c| c.is_method()),
+                    "expected a method call site"
+                );
+            }
+            other => panic!("expected Success, got {other:?}"),
         }
     }
 

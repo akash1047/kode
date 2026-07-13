@@ -130,6 +130,9 @@ pub fn build_relationships(
         }
     }
 
+    // Function → Function (calls) — resolve call sites by callee name.
+    relationships.extend(build_call_relationships(facts, node_by_id));
+
     // Sort deterministically
     relationships.sort_by(|a, b| {
         a.source()
@@ -137,6 +140,79 @@ pub fn build_relationships(
             .then_with(|| a.target().cmp(b.target()))
             .then_with(|| a.kind().cmp(&b.kind()))
     });
+
+    relationships
+}
+
+/// Resolve extracted call sites into `Calls` edges.
+///
+/// Resolution is name-based (best-effort):
+/// 1. Prefer unique repo-wide function match.
+/// 2. Else prefer same-file matches.
+/// 3. Else emit edges to every candidate with that name.
+///
+/// Unresolved names (e.g. external crates) produce no edge.
+fn build_call_relationships(
+    facts: &RepositoryFacts,
+    node_by_id: &BTreeMap<GraphNodeId, usize>,
+) -> Vec<Relationship> {
+    use std::collections::HashMap;
+
+    // Index functions by name for resolution.
+    let mut by_name: HashMap<&str, Vec<(&kode_analysis::extraction::FunctionFact, GraphNodeId)>> =
+        HashMap::new();
+    for f in facts.functions() {
+        let id = GraphNodeId::Entity(*f.id());
+        if node_by_id.contains_key(&id) {
+            by_name.entry(f.name()).or_default().push((f, id));
+        }
+    }
+
+    let mut relationships = Vec::new();
+    let mut seen = std::collections::BTreeSet::new();
+
+    for caller in facts.functions() {
+        let caller_id = GraphNodeId::Entity(*caller.id());
+        if !node_by_id.contains_key(&caller_id) {
+            continue;
+        }
+        let caller_file = caller.evidence().source_file();
+
+        for site in caller.calls() {
+            let Some(candidates) = by_name.get(site.callee_name()) else {
+                continue;
+            };
+
+            let targets: Vec<GraphNodeId> = if candidates.len() == 1 {
+                vec![candidates[0].1]
+            } else {
+                let same_file: Vec<_> = candidates
+                    .iter()
+                    .filter(|(f, _)| f.evidence().source_file() == caller_file)
+                    .map(|(_, id)| *id)
+                    .collect();
+                if !same_file.is_empty() {
+                    same_file
+                } else {
+                    candidates.iter().map(|(_, id)| *id).collect()
+                }
+            };
+
+            for target_id in targets {
+                let key = (caller_id, target_id);
+                if !seen.insert(key) {
+                    continue; // one edge per (caller, callee) pair
+                }
+                relationships.push(Relationship::with_source(
+                    caller_id,
+                    target_id,
+                    RelationshipKind::Calls,
+                    RelationshipMetadata::new(),
+                    site.evidence().clone(),
+                ));
+            }
+        }
+    }
 
     relationships
 }

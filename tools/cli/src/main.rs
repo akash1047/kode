@@ -5,7 +5,6 @@ use kode_acquisition::Language;
 use kode_graph as _;
 use kode_query::QueryEngine;
 use kode_storage::{RepositoryStorage, SqliteBackend};
-use rig as _;
 use serde as _;
 
 mod chat;
@@ -190,6 +189,28 @@ enum Commands {
     },
 
     #[command(
+        about = "Export the knowledge graph",
+        long_about = "Export the indexed knowledge graph to DOT or GraphML."
+    )]
+    Export {
+        #[arg(
+            long = "format",
+            value_name = "FMT",
+            default_value = "dot",
+            help = "Export format: dot | graphml"
+        )]
+        format: String,
+
+        #[arg(
+            short = 'o',
+            long = "output",
+            value_name = "PATH",
+            help = "Write to file instead of stdout"
+        )]
+        output: Option<String>,
+    },
+
+    #[command(
         about = "Interactive repository assistant",
         long_about = "Starts an interactive session with an LLM assistant."
     )]
@@ -269,7 +290,14 @@ fn resolve_path<'a>(path: Option<&'a Path>, repo: Option<&'a str>) -> &'a str {
 
 fn handle_scan(
     path: Option<&str>,
+    full: bool,
 ) -> Result<presenter::scan::ScanView, Box<dyn std::error::Error>> {
+    if full {
+        // Best-effort clear of existing cache so Stage 5 writes a fresh revision.
+        if let Err(e) = handle_cache_clear(path) {
+            tracing::debug!(error = %e, "cache clear before --full (may be first scan)");
+        }
+    }
     let result = kode_app::run_scan(path)?;
     Ok(presenter::scan::ScanView::from_scan_result(&result))
 }
@@ -277,14 +305,45 @@ fn handle_scan(
 fn handle_status(
     path: Option<&str>,
 ) -> Result<presenter::status::StatusView, Box<dyn std::error::Error>> {
-    let result = kode_app::run_scan(path)?;
-    Ok(presenter::status::StatusView::from_scan_result(&result))
+    // Prefer reading the index; only re-scan when no cache exists.
+    match try_status_from_cache(path) {
+        Ok(view) => Ok(view),
+        Err(cache_err) => {
+            tracing::info!(error = %cache_err, "no usable cache; running scan for status");
+            let result = kode_app::run_scan(path)?;
+            Ok(presenter::status::StatusView::from_scan_result(&result))
+        }
+    }
+}
+
+fn try_status_from_cache(
+    path: Option<&str>,
+) -> Result<presenter::status::StatusView, Box<dyn std::error::Error>> {
+    let storage = open_storage(path)?;
+    let meta = storage.metadata()?;
+    let engine = QueryEngine::new(storage);
+    let stats = engine.graph_stats()?;
+    let repo_path = path.unwrap_or(".");
+    let root = Path::new(repo_path)
+        .canonicalize()
+        .map(|p| p.display().to_string())
+        .unwrap_or_else(|_| repo_path.to_string());
+    Ok(presenter::status::StatusView::from_cache(
+        root, &meta, &stats,
+    ))
 }
 
 fn handle_files(
     path: Option<&str>,
     language: Option<&str>,
 ) -> Result<presenter::files::FilesView, Box<dyn std::error::Error>> {
+    // Prefer graph file nodes when an index exists.
+    if let Ok(storage) = open_storage(path) {
+        let engine = QueryEngine::new(storage);
+        if let Ok(files) = engine.list_files(language) {
+            return Ok(presenter::files::FilesView::from_file_results(&files));
+        }
+    }
     let result = kode_app::run_scan(path)?;
     let filter_lang = match language {
         Some(l) => Some(l.parse::<Language>()?),
@@ -313,11 +372,21 @@ fn open_storage(path: Option<&str>) -> Result<RepositoryStorage, Box<dyn std::er
 
 fn handle_symbols(
     path: Option<&str>,
-    _language: Option<&str>,
+    language: Option<&str>,
 ) -> Result<presenter::symbols::SymbolsView, Box<dyn std::error::Error>> {
     let storage = open_storage(path)?;
     let engine = QueryEngine::new(storage);
-    let results = engine.search_symbols("", None)?;
+    let results = engine.search_symbols_filtered("", None, language)?;
+    // Prefer entity symbols for listing (exclude pure structural roots).
+    let results: Vec<_> = results
+        .into_iter()
+        .filter(|s| {
+            !matches!(
+                s.kind,
+                kode_graph::NodeKind::Repository | kode_graph::NodeKind::Workspace
+            )
+        })
+        .collect();
     Ok(presenter::symbols::SymbolsView::from_symbols(&results))
 }
 
@@ -327,8 +396,44 @@ fn handle_query(
 ) -> Result<presenter::symbols::SymbolsView, Box<dyn std::error::Error>> {
     let storage = open_storage(path)?;
     let engine = QueryEngine::new(storage);
-    let results = engine.search_symbols(query, None)?;
+
+    // Special call-graph / impact prefixes for the CLI.
+    let results = if let Some(name) = query.strip_prefix("callers:") {
+        engine.find_callers(name.trim())?
+    } else if let Some(name) = query.strip_prefix("callees:") {
+        engine.find_callees(name.trim())?
+    } else if let Some(name) = query.strip_prefix("impact:") {
+        engine.impact_analysis(name.trim(), Some(8))?
+    } else if let Some(name) = query.strip_prefix("who calls ") {
+        engine.find_callers(name.trim())?
+    } else {
+        engine.search_symbols(query, None)?
+    };
+
     Ok(presenter::symbols::SymbolsView::from_symbols(&results))
+}
+
+fn handle_export(
+    path: Option<&str>,
+    format: &str,
+    output: Option<&str>,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let storage = open_storage(path)?;
+    let engine = QueryEngine::new(storage);
+    let body = match format.to_ascii_lowercase().as_str() {
+        "dot" => engine.export_dot()?,
+        "graphml" | "xml" => engine.export_graphml()?,
+        other => {
+            return Err(format!("unknown export format `{other}` (use: dot, graphml)").into());
+        }
+    };
+    if let Some(path) = output {
+        std::fs::write(path, body)?;
+        println!("wrote {path}");
+    } else {
+        print!("{body}");
+    }
+    Ok(())
 }
 
 fn handle_cache_status(
@@ -373,9 +478,21 @@ fn main() {
     tracing::info!(command = ?cli.command, "CLI command started");
 
     let result = match &cli.command {
-        Commands::Scan { path, .. } => {
+        Commands::Scan {
+            path,
+            full,
+            watch,
+            threads,
+        } => {
+            if *watch {
+                tracing::error!("--watch is not implemented yet");
+                std::process::exit(2);
+            }
+            if threads.is_some() {
+                tracing::warn!("--threads is accepted but not yet used (scan is single-threaded)");
+            }
             let scan_path = resolve_path(path.as_deref().map(Path::new), cli.repo.as_deref());
-            handle_scan(Some(scan_path)).map(|o| {
+            handle_scan(Some(scan_path), *full).map(|o| {
                 if cli.json {
                     print!("{}", formatter::json::format_scan(&o))
                 } else {
@@ -413,6 +530,9 @@ fn main() {
                 print!("{}", formatter::symbols::format(&o))
             }
         }),
+        Commands::Export { format, output } => {
+            handle_export(cli.repo.as_deref(), format, output.as_deref())
+        }
         Commands::Chat { message, question } => {
             let repo_path = cli.repo.as_deref();
             let msg = question.as_deref().or(message.as_deref());
@@ -888,6 +1008,7 @@ mod tests {
         assert!(help.contains("files"));
         assert!(help.contains("symbols"));
         assert!(help.contains("query"));
+        assert!(help.contains("export"));
         assert!(help.contains("chat"));
         assert!(help.contains("cache"));
         assert!(help.contains("config"));

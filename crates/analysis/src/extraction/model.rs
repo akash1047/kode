@@ -389,6 +389,49 @@ impl EnumFact {
     }
 }
 
+/// A single call expression found inside a function body.
+///
+/// Callee resolution to graph nodes happens later (graph Stage 4) by name.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CallSite {
+    /// Simple name of the callee (`foo` for `foo()`, `bar` for `x.bar()`).
+    callee_name: String,
+    /// Full path text when available (`module::foo`, `Type::method`).
+    callee_path: Option<String>,
+    /// True when the call is a method/field call (`receiver.method(...)`).
+    is_method: bool,
+    evidence: Evidence,
+}
+
+impl CallSite {
+    pub fn new(
+        callee_name: impl Into<String>,
+        callee_path: Option<String>,
+        is_method: bool,
+        evidence: Evidence,
+    ) -> Self {
+        Self {
+            callee_name: callee_name.into(),
+            callee_path,
+            is_method,
+            evidence,
+        }
+    }
+
+    pub fn callee_name(&self) -> &str {
+        &self.callee_name
+    }
+    pub fn callee_path(&self) -> Option<&str> {
+        self.callee_path.as_deref()
+    }
+    pub fn is_method(&self) -> bool {
+        self.is_method
+    }
+    pub fn evidence(&self) -> &Evidence {
+        &self.evidence
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FunctionFact {
     id: EntityId,
@@ -402,6 +445,8 @@ pub struct FunctionFact {
     documentation: Option<String>,
     containing_trait: Option<EntityId>,
     containing_impl: Option<EntityId>,
+    /// Call expressions discovered in this function's body.
+    calls: Vec<CallSite>,
     evidence: Evidence,
 }
 
@@ -433,8 +478,15 @@ impl FunctionFact {
             documentation,
             containing_trait,
             containing_impl,
+            calls: Vec::new(),
             evidence,
         }
+    }
+
+    /// Attach discovered call sites (used by the Rust extractor).
+    pub fn with_calls(mut self, calls: Vec<CallSite>) -> Self {
+        self.calls = calls;
+        self
     }
 
     pub fn id(&self) -> &EntityId {
@@ -469,6 +521,9 @@ impl FunctionFact {
     }
     pub fn containing_impl(&self) -> Option<&EntityId> {
         self.containing_impl.as_ref()
+    }
+    pub fn calls(&self) -> &[CallSite] {
+        &self.calls
     }
     pub fn evidence(&self) -> &Evidence {
         &self.evidence

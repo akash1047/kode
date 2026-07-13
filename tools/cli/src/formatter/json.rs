@@ -31,6 +31,10 @@ pub fn format_status(view: &StatusView) -> String {
         "recovered": view.recovered,
         "skipped": view.skipped,
         "failed": view.failed,
+        "source": view.source,
+        "graph_nodes": view.graph_nodes,
+        "graph_relationships": view.graph_relationships,
+        "revision": view.revision,
     });
     serde_json::to_string_pretty(&json).unwrap_or_else(|_| "{}".into())
 }

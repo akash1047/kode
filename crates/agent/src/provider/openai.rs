@@ -17,6 +17,47 @@ pub struct OpenAiCompatProvider {
     client: reqwest::Client,
 }
 
+/// Normalize a base URL or host into a full `…/chat/completions` endpoint.
+///
+/// Handles common Ollama Cloud misconfiguration:
+/// `https://ollama.com/api/v1` → `https://ollama.com/v1/chat/completions`
+/// (the `/api/v1` path 404s on ollama.com).
+pub fn normalize_chat_completions_url(raw: &str) -> String {
+    let mut u = raw.trim().trim_end_matches('/').to_string();
+    if u.is_empty() {
+        return "http://localhost:11434/v1/chat/completions".into();
+    }
+
+    // Ollama Cloud OpenAI-compatible API lives at `/v1`, not `/api/v1`.
+    // Native chat API is `/api/chat` (not used here).
+    if let Some(rest) = u
+        .strip_prefix("https://ollama.com/api/v1")
+        .or_else(|| u.strip_prefix("http://ollama.com/api/v1"))
+    {
+        u = format!("https://ollama.com/v1{rest}");
+    }
+
+    if u.ends_with("/chat/completions") {
+        return u;
+    }
+
+    // Already a /v1 root (OpenAI-compatible).
+    if u.ends_with("/v1") {
+        return format!("{u}/chat/completions");
+    }
+
+    // Bare host / root (local Ollama or cloud host).
+    if !u.contains("/v1") && !u.contains("/chat/") {
+        return format!("{u}/v1/chat/completions");
+    }
+
+    if u.ends_with('/') {
+        format!("{u}chat/completions")
+    } else {
+        format!("{u}/chat/completions")
+    }
+}
+
 impl OpenAiCompatProvider {
     /// Build a provider from `AgentConfig`.
     ///
@@ -25,23 +66,18 @@ impl OpenAiCompatProvider {
     /// 2. `ProviderKind::known_base_url()`
     /// 3. Ollama default (`http://localhost:11434`) with `/v1/chat/completions` appended
     pub fn new(config: &AgentConfig) -> Self {
-        let mut base_url = config
+        let raw = config
             .api_base
             .clone()
             .or_else(|| config.provider.known_base_url().map(String::from))
             .unwrap_or_else(|| {
-                let base = std::env::var("OLLAMA_BASE_URL")
-                    .unwrap_or_else(|_| "http://localhost:11434".into());
-                format!("{base}/v1/chat/completions")
+                // Prefer cloud host when OLLAMA_HOST is set; else local daemon.
+                std::env::var("OLLAMA_HOST")
+                    .or_else(|_| std::env::var("OLLAMA_BASE_URL"))
+                    .unwrap_or_else(|_| "http://localhost:11434".into())
             });
 
-        if !base_url.ends_with("/chat/completions") {
-            if base_url.ends_with('/') {
-                base_url.push_str("chat/completions");
-            } else {
-                base_url.push_str("/chat/completions");
-            }
-        }
+        let base_url = normalize_chat_completions_url(&raw);
 
         let client = reqwest::Client::builder()
             .timeout(std::time::Duration::from_secs(config.timeout_secs))
@@ -172,7 +208,8 @@ impl Provider for OpenAiCompatProvider {
 
         if !status.is_success() {
             return Err(AgentError::Provider(format!(
-                "LLM API error ({status}): {text}"
+                "LLM API error ({status}) at {}: {text}",
+                self.base_url
             )));
         }
 
@@ -327,12 +364,15 @@ mod tests {
 
     #[test]
     fn test_new_ollama_respects_env() {
-        let prev = std::env::var("OLLAMA_BASE_URL").ok();
+        let prev_base = std::env::var("OLLAMA_BASE_URL").ok();
+        let prev_host = std::env::var("OLLAMA_HOST").ok();
+        std::env::remove_var("OLLAMA_HOST");
         std::env::set_var("OLLAMA_BASE_URL", "http://ollama.local:8080");
 
         let config = AgentConfig {
             provider: crate::config::ProviderKind::Ollama,
             api_key: None,
+            api_base: None,
             ..AgentConfig::default()
         };
         let provider = OpenAiCompatProvider::new(&config);
@@ -341,11 +381,38 @@ mod tests {
             "http://ollama.local:8080/v1/chat/completions"
         );
 
-        // Restore
-        match prev {
+        match prev_base {
             Some(v) => std::env::set_var("OLLAMA_BASE_URL", v),
             None => std::env::remove_var("OLLAMA_BASE_URL"),
         }
+        match prev_host {
+            Some(v) => std::env::set_var("OLLAMA_HOST", v),
+            None => std::env::remove_var("OLLAMA_HOST"),
+        }
+    }
+
+    #[test]
+    fn test_normalize_ollama_cloud_api_v1_mistake() {
+        assert_eq!(
+            normalize_chat_completions_url("https://ollama.com/api/v1"),
+            "https://ollama.com/v1/chat/completions"
+        );
+        assert_eq!(
+            normalize_chat_completions_url("https://ollama.com/v1"),
+            "https://ollama.com/v1/chat/completions"
+        );
+        assert_eq!(
+            normalize_chat_completions_url("https://ollama.com"),
+            "https://ollama.com/v1/chat/completions"
+        );
+    }
+
+    #[test]
+    fn test_normalize_already_complete() {
+        assert_eq!(
+            normalize_chat_completions_url("https://api.openai.com/v1/chat/completions"),
+            "https://api.openai.com/v1/chat/completions"
+        );
     }
 
     #[test]

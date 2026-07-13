@@ -62,8 +62,8 @@
 //!   new fields can be added without changing the public API shape.
 //! - New [`NodeKind`] variants can be added as new language entity kinds
 //!   are introduced.
-//! - New [`RelationshipKind`] variants belong to later analysis stages
-//!   (e.g. [`RelationshipKind::Calls`] is resolved during query.)
+//! - [`RelationshipKind::Calls`] edges are built during graph construction
+//!   by resolving call sites extracted from function bodies (name-based).
 
 use thiserror as _;
 
